@@ -107,4 +107,11 @@ Phase 0~4 = 로그인·인터넷 없이 동작하는 로컬 가계부. Phase 5~6
   - "작성 종료 = 로컬 저장"은 스토어 write-through로 이미 자동. **Drive push 트리거는 Phase 6에서 이 지점(드로어 dismiss/저장)에 연결**.
   - React Compiler 주의: RHF `watch()`가 "incompatible-library" 경고 → 해당 컴포넌트만 메모 스킵(무해). Animated.Value는 `useState` lazy-init로 `react-hooks/refs` 회피.
   - 후속(선택): 저장 성공 토스트, 캘린더 셀 금액 표기.
-- **다음: Phase 4 설정/카테고리** — SettingsView(기본예산·고정지출 CRUD) + CategoryManager CRUD(웹이 미구현한 카테고리 추가/수정/삭제 신규).
+- **Phase 4 완료** ✅ — 검증: `tsc` 0 · `expo lint` 0 · `vitest` 23/23 · `expo export`(iOS) 번들 성공. ⚠️ 드로어 UI는 실기기 확인 필요(bottom-sheet는 web 미렌더 + 이 머신 Xcode 부재). web 스크린샷은 사용자 dev 서버가 8081 점유 중이라 생략 → 실기기 hot reload로 확인.
+  - 설정 탭을 **중첩 Stack으로 전환**: `settings/_layout`(Stack) + `settings/index`(설정) + `settings/categories`(카테고리 관리). 기존 leaf `settings.tsx` 삭제. 라우트 `/settings`·`/settings/categories`(정적, typedRoutes 통과).
+  - **SettingsView**(`settings/index.tsx`): 기본예산 인라인 입력(로컬 버퍼→blur 커밋) · 카테고리 관리 이동 행(활성 분류 수) · 고정지출 카드 리스트(탭→드로어 편집)+추가+엠프티. 원본 웹의 인라인 테이블을 **탭→드로어 편집**으로 재설계(RecordDrawer/BudgetDrawer와 일관, 모바일 적합).
+  - **CategoryManager**(`settings/categories.tsx`): 타입 탭(지출/수입/이체) + 아이콘 그리드(4열, 소분류 수) + "새 카테고리 추가". **웹이 미구현했던 CRUD를 신규 구현**.
+  - 신규 드로어: `category-drawer.tsx`(이름·타입·아이콘 그리드·소분류 칩 편집, add/updateCategory·soft-delete) · `fixed-expense-drawer.tsx`(금액·이름·유형·결제일·메모, Settings.fixedExpenses 배열 rewrite). 둘 다 RHF+zod, ref present/dismiss 패턴.
+  - 신규 상수/스키마: `constants/icons.ts`(PICKABLE_ICONS 아이콘 팔레트, CategoryIcon이 미지의 이름은 Circle로 폴백) · `schemas/fixed-expense.ts`. ⚠️ `schemas/category.ts`의 `subcategories`를 `.default(['기타'])`→required로 변경(RHF+zodResolver 입력/출력 타입 정합 — transaction.note와 동일 이슈 예방). 기본값 ['기타']는 드로어가 주입.
+  - FixedExpense는 동기화 개별 엔티티가 아니라 **Settings 문서 안의 배열** → add/edit/delete는 배열 rewrite(soft-delete 아님, Settings 전체가 updatedAt 기준 병합).
+- **다음: Phase 5 인증** ⚠️ **외부 설정 선행** — Supabase 프로젝트 + Google Cloud OAuth 클라이언트(Drive 스코프) 생성 필요. **작업 시작 전 사용자에게 먼저 알릴 것**(사용자가 프로젝트를 새로 만들어야 함). Phase 4까지는 로그인·인터넷 없이 동작하는 로컬 가계부 완성.
