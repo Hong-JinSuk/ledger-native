@@ -23,7 +23,7 @@ export default function TabsLayout() {
         },
       }}>
       <Tabs.Screen
-        name="index"
+        name="(journal)"
         options={{
           title: 'Journal',
           tabBarIcon: ({ color, size }) => <BookOpen color={color} size={size} />,

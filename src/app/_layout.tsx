@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { FONTS_TO_LOAD } from '@/constants/fonts';
 import { Palette } from '@/constants/palette';
+import { seedDevData } from '@/lib/dev/seed-dev-data';
 import { useLedgerStore } from '@/store/ledger-store';
 
 SplashScreen.preventAutoHideAsync();
@@ -21,7 +22,9 @@ export default function RootLayout() {
 
   // Load the on-device ledger snapshot on boot (local-first).
   useEffect(() => {
-    hydrate();
+    hydrate().then(() => {
+      if (__DEV__) seedDevData();
+    });
   }, [hydrate]);
 
   const ready = (fontsLoaded || fontError) && hydrated;

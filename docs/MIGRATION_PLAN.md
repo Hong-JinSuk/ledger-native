@@ -91,4 +91,11 @@ Phase 0~4 = 로그인·인터넷 없이 동작하는 로컬 가계부. Phase 5~6
   - 저장: `id.ts`(expo-crypto) · `storage/ledger-storage.ts`(repository 인터페이스 + AsyncStorage 단일 스냅샷 키).
   - 스토어(`src/store/ledger-store.ts`): zustand, soft-delete, write-through 직렬 persist, year/month 버킷 잠금. 부팅 하이드레이션 연결 + Journal이 실데이터 read.
   - zod 폼 스키마(`src/schemas/{transaction,category}.ts`).
-- **다음: Phase 2 읽기 화면** — Year → Month → Spreadsheet(리스트/캘린더), 감성 토큰·모션.
+- **Phase 2 완료** ✅ — 검증: `tsc` 0 · `expo lint` 0 · `vitest` 23/23 · `expo export`(iOS) + Expo web 실렌더 스크린샷 확인(iOS 시뮬레이터는 이 머신에 Xcode 부재 → Expo web + Chrome 헤드리스로 대체 캡처).
+  - Journal 중첩 Stack 라우팅: `(journal)/index`(연도) → `[year]`(월) → `[year]/[month]`(상세). 숫자 파라미터만(한글 경로 금지).
+  - 화면: YearView(연도 카드+요약+잔여예산) · MonthView(12개월 그리드) · SpreadsheetView(요약·리스트/캘린더 토글·검색·일별그룹·카테고리 아이콘). **전부 읽기 전용**(편집은 Phase 3).
+  - 공용 프리미티브: `src/components/{screen,back-link,amount-stat,category-icon,fade-in}.tsx` — 톤 변경은 프리미티브 한 곳에서 전 화면 전파.
+  - 모션: ⚠️ **moti는 웹(Metro)에서 `tslib.__extends` interop 에러 → 제거**하고 **RN 내장 `Animated`로 FadeIn** 구현(네이티브·웹 동일). 리치 애니메이션은 reanimated 직접 사용(Phase 3 bottom-sheet 등).
+  - 개발용 시드 `src/lib/dev/seed-dev-data.ts`(`__DEV__` 한정, 빈 스토어만).
+  - ⚠️ web 전용 이슈: 세로 ScrollView 콘텐츠 폭이 뷰포트보다 넓어 우측이 잘려 보임(react-native-web 특성). 네이티브는 정상. 웹 배포 시 폭 제약 필요(후속).
+- **다음: Phase 3 쓰기 플로우** — RecordDrawer(@gorhom/bottom-sheet)+RHF/zod, 예산 프롬프트/인라인 편집, 공용 confirm/toast, "작성 종료=로컬 저장" 훅.
