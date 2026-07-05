@@ -98,4 +98,11 @@ Phase 0~4 = 로그인·인터넷 없이 동작하는 로컬 가계부. Phase 5~6
   - 모션: ⚠️ **moti는 웹(Metro)에서 `tslib.__extends` interop 에러 → 제거**하고 **RN 내장 `Animated`로 FadeIn** 구현(네이티브·웹 동일). 리치 애니메이션은 reanimated 직접 사용(Phase 3 bottom-sheet 등).
   - 개발용 시드 `src/lib/dev/seed-dev-data.ts`(`__DEV__` 한정, 빈 스토어만).
   - ⚠️ web 전용 이슈: 세로 ScrollView 콘텐츠 폭이 뷰포트보다 넓어 우측이 잘려 보임(react-native-web 특성). 네이티브는 정상. 웹 배포 시 폭 제약 필요(후속).
-- **다음: Phase 3 쓰기 플로우** — RecordDrawer(@gorhom/bottom-sheet)+RHF/zod, 예산 프롬프트/인라인 편집, 공용 confirm/toast, "작성 종료=로컬 저장" 훅.
+- **Phase 3 완료** ✅ — 검증: `tsc` 0 · `expo lint` 0 errors(1 benign warn) · `vitest` · `expo export`(iOS). ⚠️ **드로어 UI는 실기기/시뮬레이터에서만 검증 가능**(bottom-sheet는 react-native-web 미렌더 + 이 머신 Xcode 부재) → 온디바이스 테스트 필요.
+  - RecordDrawer(`src/components/record-drawer.tsx`): @gorhom/bottom-sheet + RHF/zod. 금액(포맷)·타입 토글·카테고리 픽커·거래처·날짜(일)·메모. 저장(추가/수정)·삭제(soft-delete + Alert 확인).
+  - BudgetDrawer(`src/components/budget-drawer.tsx`): 요약 카드 탭 → 월 예산 인라인 편집 + **그 달 첫 진입 자동 프롬프트**(현재월·무예산·미확정 시) + "기본 예산으로" 토글.
+  - SpreadsheetView 연결: FAB(추가) · 행 탭(수정) · 요약 탭(예산) · 빈 상태 CTA.
+  - "작성 종료 = 로컬 저장"은 스토어 write-through로 이미 자동. **Drive push 트리거는 Phase 6에서 이 지점(드로어 dismiss/저장)에 연결**.
+  - React Compiler 주의: RHF `watch()`가 "incompatible-library" 경고 → 해당 컴포넌트만 메모 스킵(무해). Animated.Value는 `useState` lazy-init로 `react-hooks/refs` 회피.
+  - 후속(선택): 저장 성공 토스트, 캘린더 셀 금액 표기.
+- **다음: Phase 4 설정/카테고리** — SettingsView(기본예산·고정지출 CRUD) + CategoryManager CRUD(웹이 미구현한 카테고리 추가/수정/삭제 신규).

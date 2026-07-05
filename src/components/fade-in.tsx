@@ -1,9 +1,11 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Animated, type ViewStyle } from 'react-native';
 
 /**
  * Soft fade + rise entrance (the app's default motion "결"). Stagger via `delay`.
  * Uses RN's built-in Animated (no extra deps) so it runs identically on native and web.
+ * The Animated.Value is held in state (lazy init) rather than a ref so it isn't read
+ * during render — satisfies the React Compiler's rules-of-react lint.
  */
 export function FadeIn({
   children,
@@ -14,7 +16,7 @@ export function FadeIn({
   delay?: number;
   style?: ViewStyle;
 }) {
-  const progress = useRef(new Animated.Value(0)).current;
+  const [progress] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const anim = Animated.timing(progress, {

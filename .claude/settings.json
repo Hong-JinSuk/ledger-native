@@ -8,7 +8,9 @@
       "Bash(node -e \"console.log\\('reanimated', require\\('react-native-reanimated/package.json'\\).version\\); console.log\\('worklets', require\\('react-native-worklets/package.json'\\).version\\)\")",
       "Bash('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' --headless=new --disable-gpu --hide-scrollbars --virtual-time-budget=120000 --dump-dom http://localhost:8081)",
       "Bash('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=2 --window-size=430,932 --virtual-time-budget=40000 --screenshot=/private/tmp/claude-501/-Users-hjs-projects-ledger-native/8d5d8d37-3ad6-4db6-9512-8409e14d9228/scratchpad/yearview-moti.png http://localhost:8081)",
-      "Bash('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=2 --window-size=430,932 --virtual-time-budget=40000 --screenshot=/private/tmp/claude-501/-Users-hjs-projects-ledger-native/8d5d8d37-3ad6-4db6-9512-8409e14d9228/scratchpad/yearview-fixed.png http://localhost:8081)"
+      "Bash('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=2 --window-size=430,932 --virtual-time-budget=40000 --screenshot=/private/tmp/claude-501/-Users-hjs-projects-ledger-native/8d5d8d37-3ad6-4db6-9512-8409e14d9228/scratchpad/yearview-fixed.png http://localhost:8081)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(node -e \"const p=require\\('./package.json'\\).dependencies; console.log\\('bottom-sheet', p['@gorhom/bottom-sheet']\\); console.log\\('react-hook-form', p['react-hook-form']\\); console.log\\('@hookform/resolvers', p['@hookform/resolvers']\\); console.log\\('reanimated', p['react-native-reanimated']\\);\")"
     ]
   },
   "enabledPlugins": {

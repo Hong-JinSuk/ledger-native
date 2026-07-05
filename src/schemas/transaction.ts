@@ -12,7 +12,9 @@ export const transactionFormSchema = z.object({
   category: z.string().optional(),
   merchant: z.string().optional(),
   day: z.number().int().min(1).max(31).nullable(),
-  note: z.string().default(''),
+  // optional (not .default) so the schema's input and output types match — keeps the
+  // react-hook-form + zodResolver generics aligned. Callers coalesce to '' where needed.
+  note: z.string().optional(),
 });
 
 export type TransactionFormValues = z.infer<typeof transactionFormSchema>;
