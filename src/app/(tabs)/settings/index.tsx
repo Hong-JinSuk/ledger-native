@@ -3,6 +3,7 @@ import { ChevronRight, Layers, Plus } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
+import { AppHeader } from '@/components/app-header';
 import { FadeIn } from '@/components/fade-in';
 import { FixedExpenseDrawer, type FixedExpenseDrawerRef } from '@/components/fixed-expense-drawer';
 import { Screen } from '@/components/screen';
@@ -46,12 +47,7 @@ export default function SettingsView() {
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 64 }}
         keyboardShouldPersistTaps="handled">
-        <View className="mb-8">
-          <Text className="text-4xl text-ink font-serif">Settings</Text>
-          <Text className="mt-2 text-[10px] uppercase tracking-[3px] text-muted font-sans-semibold">
-            예산 · 카테고리 · 고정 지출
-          </Text>
-        </View>
+        <AppHeader title="Settings" subtitle="예산 · 카테고리 · 고정 지출" />
 
         {/* Default budget */}
         <FadeIn>

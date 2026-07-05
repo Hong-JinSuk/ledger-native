@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { AmountStat } from '@/components/amount-stat';
-import { BackLink } from '@/components/back-link';
+import { AppHeader } from '@/components/app-header';
 import { BudgetDrawer, type BudgetDrawerRef } from '@/components/budget-drawer';
 import { CategoryIcon } from '@/components/category-icon';
 import { FadeIn } from '@/components/fade-in';
@@ -114,16 +114,12 @@ export default function SpreadsheetView() {
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 96 }}
           keyboardShouldPersistTaps="handled">
-          <BackLink label="Months" />
-
-          <View className="mb-5 mt-4">
-            <Text className="text-3xl text-ink font-serif">
-              {y}. {m}월
-            </Text>
-            <Text className="mt-2 text-[10px] uppercase tracking-[3px] text-muted font-sans-semibold">
-              {m}월의 기록
-            </Text>
-          </View>
+          <AppHeader
+            title={`${y}. ${m}월`}
+            subtitle={`${m}월의 기록`}
+            backLabel="Months"
+            size="md"
+          />
 
           {/* Summary — tap to set/edit this month's budget */}
           <FadeIn>

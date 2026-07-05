@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { AmountStat } from '@/components/amount-stat';
-import { BackLink } from '@/components/back-link';
+import { AppHeader } from '@/components/app-header';
 import { FadeIn } from '@/components/fade-in';
 import { Screen } from '@/components/screen';
 import { monthKey } from '@/lib/date';
@@ -25,17 +25,16 @@ export default function MonthView() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 64 }}>
-        <BackLink label="Years" />
+        <AppHeader
+          title={`${y} Ledger`}
+          subtitle="연간 요약 및 월별 상세"
+          backLabel="Years"
+          size="md"
+        />
 
-        <View className="mb-6 mt-4">
-          <Text className="text-3xl text-ink font-serif">{y} Ledger</Text>
-          <Text className="mt-2 text-[10px] uppercase tracking-[3px] text-muted font-sans-semibold">
-            연간 요약 및 월별 상세
-          </Text>
-          <View className="mt-4 flex-row gap-6">
-            <AmountStat label="수입" amount={totals.income} tone="income" size="sm" />
-            <AmountStat label="지출" amount={totals.expense} tone="expense" size="sm" />
-          </View>
+        <View className="mb-6 flex-row gap-6">
+          <AmountStat label="수입" amount={totals.income} tone="income" size="sm" />
+          <AmountStat label="지출" amount={totals.expense} tone="expense" size="sm" />
         </View>
 
         <View className="flex-row flex-wrap justify-between gap-y-3">

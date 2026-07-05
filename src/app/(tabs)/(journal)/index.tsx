@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { AmountStat } from '@/components/amount-stat';
+import { AppHeader } from '@/components/app-header';
 import { FadeIn } from '@/components/fade-in';
 import { Screen } from '@/components/screen';
 import { Palette } from '@/constants/palette';
@@ -39,12 +40,7 @@ export default function YearView() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 64 }}>
-        <View className="mb-8">
-          <Text className="text-4xl text-ink font-serif">Ledger</Text>
-          <Text className="mt-2 text-[10px] uppercase tracking-[3px] text-muted font-sans-semibold">
-            Financial Journal
-          </Text>
-        </View>
+        <AppHeader title="Ledger" subtitle="Financial Journal" />
 
         {/* Add year */}
         {isAdding ? (
