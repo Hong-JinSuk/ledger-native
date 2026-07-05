@@ -28,12 +28,14 @@ type Props = {
   month: number;
   /** The row being edited, or null to add a new one. */
   transaction: Transaction | null;
+  /** Day to pre-fill for a NEW row (e.g. the day selected in calendar view). */
+  defaultDay?: number | null;
   onClose?: () => void;
 };
 
-function toDefaults(tx: Transaction | null): TransactionFormValues {
+function toDefaults(tx: Transaction | null, defaultDay: number | null): TransactionFormValues {
   if (!tx) {
-    return { type: '지출', amount: 0, category: undefined, merchant: '', day: null, note: '' };
+    return { type: '지출', amount: 0, category: undefined, merchant: '', day: defaultDay, note: '' };
   }
   return {
     type: (tx.type || '지출') as TransactionType,
@@ -46,7 +48,7 @@ function toDefaults(tx: Transaction | null): TransactionFormValues {
 }
 
 export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDrawer(
-  { year, month, transaction, onClose },
+  { year, month, transaction, defaultDay = null, onClose },
   ref,
 ) {
   const sheetRef = useRef<BottomSheetModal>(null);
@@ -63,12 +65,12 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   const isEdit = transaction != null;
   const { control, handleSubmit, reset, watch, setValue } = useForm<TransactionFormValues>({
     resolver: zodResolver(transactionFormSchema),
-    defaultValues: toDefaults(transaction),
+    defaultValues: toDefaults(transaction, defaultDay),
   });
 
   useEffect(() => {
-    reset(toDefaults(transaction));
-  }, [transaction, reset]);
+    reset(toDefaults(transaction, defaultDay));
+  }, [transaction, defaultDay, reset]);
 
   const selectedType = watch('type');
   const visibleCategories = useMemo(

@@ -19,7 +19,7 @@ import {
   monthKey,
   weekdayLabel,
 } from '@/lib/date';
-import { getMonthlyBudget } from '@/lib/ledger/budget';
+import { fixedExpensesTotal, getMonthlyBudget } from '@/lib/ledger/budget';
 import {
   activeRows,
   groupByDay,
@@ -47,12 +47,16 @@ export default function SpreadsheetView() {
 
   const [mode, setMode] = useState<ViewMode>('list');
   const [query, setQuery] = useState('');
+  const [selectedDay, setSelectedDay] = useState<number>(1);
 
   const drawerRef = useRef<RecordDrawerRef>(null);
   const budgetRef = useRef<BudgetDrawerRef>(null);
   const [editing, setEditing] = useState<Transaction | null>(null);
-  const openAdd = () => {
+  const [addDay, setAddDay] = useState<number | null>(null);
+  // `day` is optional; the `typeof` guard drops any GestureResponderEvent when wired to onPress.
+  const openAdd = (day?: number | null) => {
     setEditing(null);
+    setAddDay(typeof day === 'number' ? day : null);
     drawerRef.current?.present();
   };
   const openEdit = (tx: Transaction) => {
@@ -74,6 +78,12 @@ export default function SpreadsheetView() {
     }
   }, [key, settings, y, m]);
 
+  // Calendar starts on today (when viewing the current month) or the 1st.
+  useEffect(() => {
+    const now = new Date();
+    setSelectedDay(now.getFullYear() === y && now.getMonth() === m - 1 ? now.getDate() : 1);
+  }, [y, m]);
+
   const rows = useMemo(() => activeRows(records[key]), [records, key]);
   const iconByCategory = useMemo(
     () => Object.fromEntries(categories.map((c) => [c.name, c.icon])),
@@ -82,6 +92,7 @@ export default function SpreadsheetView() {
 
   const summary = monthSummary(records[key]);
   const remaining = monthRemainingBudget(records[key], settings, y, m);
+  const fixedTotal = fixedExpensesTotal(settings);
 
   const filtered = useMemo(() => sortRowsByDayDesc(searchRows(rows, query)), [rows, query]);
   const dayGroups = useMemo(() => {
@@ -91,6 +102,11 @@ export default function SpreadsheetView() {
       .sort((a, b) => b - a)
       .map((day) => ({ day, rows: groups[day] }));
   }, [filtered]);
+  // Records on the calendar-selected day (undated rows never match a calendar day).
+  const selectedRows = useMemo(
+    () => rows.filter((r) => r.day === selectedDay).sort((a, b) => a.id.localeCompare(b.id)),
+    [rows, selectedDay],
+  );
 
   return (
     <Screen>
@@ -140,6 +156,9 @@ export default function SpreadsheetView() {
               <View className="mt-4 flex-row gap-6">
                 <AmountStat label="수입" amount={summary.income} tone="income" size="sm" />
                 <AmountStat label="지출" amount={summary.expense} tone="expense" size="sm" />
+                {fixedTotal > 0 && (
+                  <AmountStat label="고정지출" amount={fixedTotal} tone="expense" size="sm" />
+                )}
               </View>
             </Pressable>
           </FadeIn>
@@ -205,13 +224,31 @@ export default function SpreadsheetView() {
               ))
             )
           ) : (
-            <MonthCalendar year={y} month={m} rows={rows} />
+            <>
+              <MonthCalendar
+                year={y}
+                month={m}
+                rows={rows}
+                selectedDay={selectedDay}
+                onSelectDay={setSelectedDay}
+              />
+              <SelectedDayDetail
+                year={y}
+                month={m}
+                day={selectedDay}
+                rows={selectedRows}
+                iconByCategory={iconByCategory}
+                currency={settings.currency}
+                onAdd={() => openAdd(selectedDay)}
+                onEditRow={openEdit}
+              />
+            </>
           )}
         </ScrollView>
 
         {/* Add FAB */}
         <Pressable
-          onPress={openAdd}
+          onPress={() => openAdd(mode === 'calendar' ? selectedDay : null)}
           className="absolute bottom-6 right-5 h-14 w-14 items-center justify-center rounded-full bg-ink active:opacity-80"
           style={{
             elevation: 4,
@@ -229,6 +266,7 @@ export default function SpreadsheetView() {
         year={y}
         month={m}
         transaction={editing}
+        defaultDay={addDay}
         onClose={() => setEditing(null)}
       />
       <BudgetDrawer ref={budgetRef} year={y} month={m} />
@@ -297,10 +335,14 @@ function MonthCalendar({
   year,
   month,
   rows,
+  selectedDay,
+  onSelectDay,
 }: {
   year: number;
   month: number;
   rows: Transaction[];
+  selectedDay: number;
+  onSelectDay: (day: number) => void;
 }) {
   const totalDays = daysInMonth(year, month);
   const leading = firstWeekdayOfMonth(year, month);
@@ -337,15 +379,17 @@ function MonthCalendar({
         {cells.map((day, idx) => {
           const activity = day != null ? byDay[day] : undefined;
           const today = day != null && isToday(year, month, day);
+          const selected = day != null && day === selectedDay;
           return (
-            <View
-              key={idx}
-              style={{ width: `${100 / 7}%`, height: 56 }}
-              className="items-center justify-start pt-1.5">
+            <View key={idx} style={{ width: `${100 / 7}%`, height: 56 }} className="items-center">
               {day != null && (
-                <>
+                <Pressable
+                  onPress={() => onSelectDay(day)}
+                  className={`h-full w-full items-center justify-start rounded-2xl pt-1.5 ${selected ? 'bg-fill' : ''} active:opacity-60`}>
                   <View
-                    className={`h-6 w-6 items-center justify-center rounded-full ${today ? 'bg-ink' : ''}`}>
+                    className={`h-6 w-6 items-center justify-center rounded-full ${
+                      today ? 'bg-ink' : selected ? 'border border-ink' : ''
+                    }`}>
                     <Text className={`text-xs font-mono ${today ? 'text-paper' : 'text-ink'}`}>
                       {day}
                     </Text>
@@ -354,7 +398,7 @@ function MonthCalendar({
                     {!!activity?.income && <View className="h-1.5 w-1.5 rounded-full bg-income" />}
                     {!!activity?.expense && <View className="h-1.5 w-1.5 rounded-full bg-expense" />}
                   </View>
-                </>
+                </Pressable>
               )}
             </View>
           );
@@ -373,6 +417,58 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
       <Pressable onPress={onAdd} className="mt-5 rounded-full bg-ink px-6 py-3 active:opacity-80">
         <Text className="text-sm text-paper font-sans-bold">기록 남기기</Text>
       </Pressable>
+    </View>
+  );
+}
+
+function SelectedDayDetail({
+  year,
+  month,
+  day,
+  rows,
+  iconByCategory,
+  currency,
+  onAdd,
+  onEditRow,
+}: {
+  year: number;
+  month: number;
+  day: number;
+  rows: Transaction[];
+  iconByCategory: Record<string, string>;
+  currency: string;
+  onAdd: () => void;
+  onEditRow: (tx: Transaction) => void;
+}) {
+  return (
+    <View className="mt-6">
+      <View className="mb-1 flex-row items-center justify-between">
+        <Text className="text-xs text-muted font-sans-semibold">
+          {month}월 {day}일 {weekdayLabel(year, month, day)}
+        </Text>
+        <Pressable
+          onPress={onAdd}
+          hitSlop={8}
+          className="flex-row items-center gap-1 active:opacity-60">
+          <Plus size={14} color={Palette.muted} />
+          <Text className="text-xs text-muted font-sans-semibold">추가</Text>
+        </Pressable>
+      </View>
+      {rows.length === 0 ? (
+        <View className="mt-2 items-center rounded-2xl border border-dashed border-line py-8">
+          <Text className="text-sm text-muted font-sans">이 날은 아직 기록이 없어요.</Text>
+        </View>
+      ) : (
+        rows.map((row) => (
+          <TransactionRow
+            key={row.id}
+            row={row}
+            icon={iconByCategory[row.category ?? '']}
+            currency={currency}
+            onPress={() => onEditRow(row)}
+          />
+        ))
+      )}
     </View>
   );
 }

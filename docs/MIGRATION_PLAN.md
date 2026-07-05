@@ -114,4 +114,9 @@ Phase 0~4 = 로그인·인터넷 없이 동작하는 로컬 가계부. Phase 5~6
   - 신규 드로어: `category-drawer.tsx`(이름·타입·아이콘 그리드·소분류 칩 편집, add/updateCategory·soft-delete) · `fixed-expense-drawer.tsx`(금액·이름·유형·결제일·메모, Settings.fixedExpenses 배열 rewrite). 둘 다 RHF+zod, ref present/dismiss 패턴.
   - 신규 상수/스키마: `constants/icons.ts`(PICKABLE_ICONS 아이콘 팔레트, CategoryIcon이 미지의 이름은 Circle로 폴백) · `schemas/fixed-expense.ts`. ⚠️ `schemas/category.ts`의 `subcategories`를 `.default(['기타'])`→required로 변경(RHF+zodResolver 입력/출력 타입 정합 — transaction.note와 동일 이슈 예방). 기본값 ['기타']는 드로어가 주입.
   - FixedExpense는 동기화 개별 엔티티가 아니라 **Settings 문서 안의 배열** → add/edit/delete는 배열 rewrite(soft-delete 아님, Settings 전체가 updatedAt 기준 병합).
+- **Phase 4.5 로컬 기능 파리티 완료** ✅ — 검증: `tsc` 0 · `expo lint` 0 · `vitest` 23/23 · `expo export`(iOS) 성공. 원본 웹 10개 컴포넌트 정독 후, **백엔드와 무관한데 Phase 2(읽기 우선) 빌드 중 누락됐던 로컬 기능**을 보강:
+  - **연도 추가/삭제**(`(journal)/index.tsx`): store `addYear`/`deleteYear`를 UI에 연결(인라인 추가 폼 + 카드 휴지통→Alert 확인). ⚠️ 원본 로컬 앱의 실기능인데 그동안 UI가 없어 새 연도를 못 만들던 갭 해소.
+  - **캘린더 날짜 상호작용**(`[year]/[month].tsx`): `MonthCalendar`를 Pressable 셀로(날짜 선택) + `SelectedDayDetail`(그날 내역 목록/빈상태/추가). `RecordDrawer`에 `defaultDay` prop 추가(캘린더 선택일로 새 기록 생성). FAB도 캘린더 모드에선 선택일 사용.
+  - **MonthView 연간 합계 헤더**(수입/지출) · **월 요약 고정지출 라인**(fixedTotal>0일 때만).
+  - **의도적 미이식(갭 아님)**: YearView 카드/리스트 토글(모바일 단일폭 불필요) · 예산 프롬프트 하드 게이팅(원본은 예산 없으면 기록 추가 차단 → 네이티브는 감성 톤 위해 현재 월만 부드럽게 안내) · `syncToCloud`(원본은 800ms 후 alert 뿐인 가짜 스텁 → Phase 6 실제 Drive 동기화로 대체). RecordDrawer 소분류 선택은 **원본에도 없음**(대분류만) → 갭 아님. ⚠️ 데이터 키: 원본은 거래의 category를 **id**로 저장, 네이티브는 **name**으로 저장(네이티브 내부는 name으로 일관 — 카테고리 rename 시 기존 거래 매칭이 끊길 수 있는 건 향후 유의점).
 - **다음: Phase 5 인증** ⚠️ **외부 설정 선행** — Supabase 프로젝트 + Google Cloud OAuth 클라이언트(Drive 스코프) 생성 필요. **작업 시작 전 사용자에게 먼저 알릴 것**(사용자가 프로젝트를 새로 만들어야 함). Phase 4까지는 로그인·인터넷 없이 동작하는 로컬 가계부 완성.

@@ -6,7 +6,7 @@ import { BackLink } from '@/components/back-link';
 import { FadeIn } from '@/components/fade-in';
 import { Screen } from '@/components/screen';
 import { monthKey } from '@/lib/date';
-import { monthRemainingBudget, monthSummary } from '@/lib/ledger/selectors';
+import { monthRemainingBudget, monthSummary, yearSummary } from '@/lib/ledger/selectors';
 import { formatCurrency } from '@/lib/money';
 import { useLedgerStore } from '@/store/ledger-store';
 
@@ -20,6 +20,7 @@ export default function MonthView() {
   const y = Number(year);
   const records = useLedgerStore((s) => s.records);
   const settings = useLedgerStore((s) => s.settings);
+  const totals = yearSummary(records, y);
 
   return (
     <Screen>
@@ -31,6 +32,10 @@ export default function MonthView() {
           <Text className="mt-2 text-[10px] uppercase tracking-[3px] text-muted font-sans-semibold">
             연간 요약 및 월별 상세
           </Text>
+          <View className="mt-4 flex-row gap-6">
+            <AmountStat label="수입" amount={totals.income} tone="income" size="sm" />
+            <AmountStat label="지출" amount={totals.expense} tone="expense" size="sm" />
+          </View>
         </View>
 
         <View className="flex-row flex-wrap justify-between gap-y-3">
