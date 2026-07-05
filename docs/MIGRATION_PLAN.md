@@ -76,6 +76,8 @@ Phase 0~4 = 로그인·인터넷 없이 동작하는 로컬 가계부. Phase 5~6
 
 ## 진행 상태
 
+> ⚠️ **환경/SDK**: 스토어 Expo Go가 **최대 SDK 54**까지만 지원해서(iOS 26.5에서도 그게 최신), 온디바이스 테스트를 위해 프로젝트를 **Expo SDK 54**로 맞춤 — expo 54.0.35 / RN 0.81.5 / React 19.1 / reanimated 4.1 / expo-router 6.0. 스토어 Expo Go가 상위 SDK를 지원하거나 dev build 할 때 `expo install expo@^57 && expo install --fix`로 올릴 수 있음. 다운그레이드 시 주의: app.json plugins에서 SDK54 비호환 항목(expo-image/status-bar/web-browser) 제거 + `babel-preset-expo` 명시 설치 필요. iOS 시뮬레이터는 이 맥에 Xcode 없어 불가 → 실기기 Expo Go로 테스트.
+
 - **Phase 0 완료** ✅ — 검증: `tsc` 0 · `expo lint` 0 · `expo export`(iOS) 번들 성공.
   - NativeWind 4.2 + Tailwind 3.4 셋업(babel/metro/tailwind.config/global.css/`nativewind-env.d.ts`, `*.css` 타입 선언).
   - 팔레트/폰트 상수(`src/constants/palette.ts`, `src/constants/fonts.ts`), Playfair/Inter/JetBrains 로딩.
