@@ -7,7 +7,7 @@ import { FadeIn } from '@/components/fade-in';
 import { Screen } from '@/components/screen';
 import { monthKey } from '@/lib/date';
 import { monthRemainingBudget, monthSummary, yearSummary } from '@/lib/ledger/selectors';
-import { formatCurrency } from '@/lib/money';
+import { formatAmount } from '@/lib/money';
 import { useLedgerStore } from '@/store/ledger-store';
 
 const MONTH_ABBR = [
@@ -43,7 +43,6 @@ export default function MonthView() {
             const rows = records[monthKey(y, month)];
             const summary = monthSummary(rows);
             const remaining = monthRemainingBudget(rows, settings, y, month);
-            const hasData = summary.income !== 0 || summary.expense !== 0;
             return (
               <FadeIn key={month} style={{ width: '48%' }} delay={i * 30}>
                 <Pressable
@@ -57,19 +56,19 @@ export default function MonthView() {
                   <Text className="text-[11px] uppercase tracking-[2px] text-muted font-sans-bold">
                     {abbr}
                   </Text>
-                  {hasData ? (
-                    <View className="mt-3 gap-2">
-                      <AmountStat label="수입" amount={summary.income} tone="income" size="sm" />
-                      <AmountStat label="지출" amount={summary.expense} tone="expense" size="sm" />
-                      {remaining !== null && (
-                        <Text className="mt-1 text-[11px] text-muted font-sans">
-                          남은 {formatCurrency(remaining, settings.currency)}
-                        </Text>
-                      )}
-                    </View>
-                  ) : (
-                    <Text className="mt-3 text-xs text-muted font-sans">기록 없음</Text>
-                  )}
+                  {/* Always two rows so every card is the same height (budget or not). */}
+                  <View className="mt-3 gap-1.5">
+                    <MonthStatRow
+                      label="남은"
+                      value={remaining !== null ? formatAmount(remaining) : '—'}
+                      toneClass={remaining !== null && remaining < 0 ? 'text-expense' : 'text-ink'}
+                    />
+                    <MonthStatRow
+                      label="지출"
+                      value={formatAmount(summary.expense)}
+                      toneClass={summary.expense > 0 ? 'text-expense' : 'text-muted'}
+                    />
+                  </View>
                 </Pressable>
               </FadeIn>
             );
@@ -77,5 +76,26 @@ export default function MonthView() {
         </View>
       </ScrollView>
     </Screen>
+  );
+}
+
+function MonthStatRow({
+  label,
+  value,
+  toneClass,
+}: {
+  label: string;
+  value: string;
+  toneClass: string;
+}) {
+  return (
+    <View className="flex-row items-baseline justify-between">
+      <Text className="text-[10px] uppercase tracking-wider text-muted font-sans-semibold">
+        {label}
+      </Text>
+      <Text numberOfLines={1} className={`ml-2 shrink text-sm font-mono-medium ${toneClass}`}>
+        {value}
+      </Text>
+    </View>
   );
 }
