@@ -9,9 +9,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Trash2 } from 'lucide-react-native';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { CategoryIcon } from '@/components/category-icon';
+import { useConfirm } from '@/components/confirm-dialog';
 import { Palette } from '@/constants/palette';
 import { daysInMonth } from '@/lib/date';
 import { formatAmount, parseAmount } from '@/lib/money';
@@ -61,6 +62,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   const addTransaction = useLedgerStore((s) => s.addTransaction);
   const updateTransaction = useLedgerStore((s) => s.updateTransaction);
   const deleteTransaction = useLedgerStore((s) => s.deleteTransaction);
+  const confirm = useConfirm();
 
   const isEdit = transaction != null;
   const { control, handleSubmit, reset, watch, setValue } = useForm<TransactionFormValues>({
@@ -111,20 +113,13 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
     [isEdit, transaction, updateTransaction, addTransaction, year, month],
   );
 
-  const onDelete = useCallback(() => {
+  const onDelete = useCallback(async () => {
     if (!transaction) return;
-    Alert.alert('이 기록을 삭제할까요?', '삭제하면 되돌릴 수 없어요.', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '삭제',
-        style: 'destructive',
-        onPress: () => {
-          deleteTransaction(year, month, transaction.id);
-          sheetRef.current?.dismiss();
-        },
-      },
-    ]);
-  }, [transaction, deleteTransaction, year, month]);
+    const ok = await confirm({ title: '이 기록을 삭제할까요?', message: '삭제하면 되돌릴 수 없어요.' });
+    if (!ok) return;
+    deleteTransaction(year, month, transaction.id);
+    sheetRef.current?.dismiss();
+  }, [transaction, deleteTransaction, year, month, confirm]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (

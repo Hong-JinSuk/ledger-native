@@ -1,10 +1,11 @@
 import { useLocalSearchParams } from 'expo-router';
-import { Plus, Search } from 'lucide-react-native';
+import { Plus, Search, Trash2 } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { AmountStat } from '@/components/amount-stat';
 import { AppHeader } from '@/components/app-header';
+import { useConfirm } from '@/components/confirm-dialog';
 import { BudgetDrawer, type BudgetDrawerRef } from '@/components/budget-drawer';
 import { CategoryIcon } from '@/components/category-icon';
 import { FadeIn } from '@/components/fade-in';
@@ -44,6 +45,8 @@ export default function SpreadsheetView() {
   const records = useLedgerStore((s) => s.records);
   const categories = useLedgerStore((s) => s.categories);
   const settings = useLedgerStore((s) => s.settings);
+  const deleteMonth = useLedgerStore((s) => s.deleteMonth);
+  const confirm = useConfirm();
 
   const [mode, setMode] = useState<ViewMode>('list');
   const [query, setQuery] = useState('');
@@ -62,6 +65,15 @@ export default function SpreadsheetView() {
   const openEdit = (tx: Transaction) => {
     setEditing(tx);
     drawerRef.current?.present();
+  };
+
+  const onDeleteMonth = async () => {
+    const ok = await confirm({
+      title: `${m}월 기록을 전부 삭제할까요?`,
+      message: '이 달의 모든 기록이 사라져요. 되돌릴 수 없어요.',
+      confirmLabel: '전체 삭제',
+    });
+    if (ok) deleteMonth(y, m);
   };
 
   // First entry of the *current* month with no budget set → gently prompt once.
@@ -239,6 +251,15 @@ export default function SpreadsheetView() {
                 onEditRow={openEdit}
               />
             </>
+          )}
+
+          {rows.length > 0 && (
+            <Pressable
+              onPress={onDeleteMonth}
+              className="mt-10 flex-row items-center justify-center gap-1.5 py-3 active:opacity-60">
+              <Trash2 size={14} color={Palette.expense} />
+              <Text className="text-xs text-expense font-sans-medium">이 달 기록 전체 삭제</Text>
+            </Pressable>
           )}
         </ScrollView>
 

@@ -1,10 +1,11 @@
 import { useRouter } from 'expo-router';
 import { ChevronRight, Plus, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { AmountStat } from '@/components/amount-stat';
 import { AppHeader } from '@/components/app-header';
+import { useConfirm } from '@/components/confirm-dialog';
 import { FadeIn } from '@/components/fade-in';
 import { Screen } from '@/components/screen';
 import { Palette } from '@/constants/palette';
@@ -19,6 +20,7 @@ export default function YearView() {
   const settings = useLedgerStore((s) => s.settings);
   const addYear = useLedgerStore((s) => s.addYear);
   const deleteYear = useLedgerStore((s) => s.deleteYear);
+  const confirm = useConfirm();
 
   const [isAdding, setIsAdding] = useState(false);
   const [newYear, setNewYear] = useState('');
@@ -30,11 +32,12 @@ export default function YearView() {
     setIsAdding(false);
   };
 
-  const confirmDeleteYear = (year: number) => {
-    Alert.alert(`${year}년을 삭제할까요?`, '그 해에 기록한 내역이 모두 사라져요.', [
-      { text: '취소', style: 'cancel' },
-      { text: '삭제', style: 'destructive', onPress: () => deleteYear(year) },
-    ]);
+  const confirmDeleteYear = async (year: number) => {
+    const ok = await confirm({
+      title: `${year}년을 삭제할까요?`,
+      message: '그 해에 기록한 내역이 모두 사라져요.',
+    });
+    if (ok) deleteYear(year);
   };
 
   return (

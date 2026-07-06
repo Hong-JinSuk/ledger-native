@@ -9,8 +9,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Trash2 } from 'lucide-react-native';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { useConfirm } from '@/components/confirm-dialog';
 import { Palette } from '@/constants/palette';
 import { newId } from '@/lib/id';
 import { formatAmount, parseAmount } from '@/lib/money';
@@ -49,6 +50,7 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
 
     const types = useLedgerStore((s) => s.settings.fixedExpenseTypes);
     const updateSettings = useLedgerStore((s) => s.updateSettings);
+    const confirm = useConfirm();
 
     const isEdit = expense != null;
     const { control, handleSubmit, reset } = useForm<FixedExpenseFormValues>({
@@ -80,21 +82,17 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
       [isEdit, expense, updateSettings],
     );
 
-    const onDelete = useCallback(() => {
+    const onDelete = useCallback(async () => {
       if (!expense) return;
-      Alert.alert('이 고정 지출을 삭제할까요?', '삭제하면 되돌릴 수 없어요.', [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '삭제',
-          style: 'destructive',
-          onPress: () => {
-            const current = useLedgerStore.getState().settings.fixedExpenses;
-            updateSettings({ fixedExpenses: current.filter((e) => e.id !== expense.id) });
-            sheetRef.current?.dismiss();
-          },
-        },
-      ]);
-    }, [expense, updateSettings]);
+      const ok = await confirm({
+        title: '이 고정 지출을 삭제할까요?',
+        message: '삭제하면 되돌릴 수 없어요.',
+      });
+      if (!ok) return;
+      const current = useLedgerStore.getState().settings.fixedExpenses;
+      updateSettings({ fixedExpenses: current.filter((e) => e.id !== expense.id) });
+      sheetRef.current?.dismiss();
+    }, [expense, updateSettings, confirm]);
 
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => (

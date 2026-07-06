@@ -9,9 +9,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus, Trash2, X } from 'lucide-react-native';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { CategoryIcon } from '@/components/category-icon';
+import { useConfirm } from '@/components/confirm-dialog';
 import { PICKABLE_ICONS } from '@/constants/icons';
 import { Palette } from '@/constants/palette';
 import { categoryFormSchema, type CategoryFormValues } from '@/schemas/category';
@@ -55,6 +56,7 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
   const addCategory = useLedgerStore((s) => s.addCategory);
   const updateCategory = useLedgerStore((s) => s.updateCategory);
   const deleteCategory = useLedgerStore((s) => s.deleteCategory);
+  const confirm = useConfirm();
 
   const isEdit = category != null;
   const [subInput, setSubInput] = useState('');
@@ -81,20 +83,16 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
     [isEdit, category, updateCategory, addCategory],
   );
 
-  const onDelete = useCallback(() => {
+  const onDelete = useCallback(async () => {
     if (!category) return;
-    Alert.alert('이 카테고리를 삭제할까요?', '이미 기록된 내역은 그대로 남아요.', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '삭제',
-        style: 'destructive',
-        onPress: () => {
-          deleteCategory(category.id);
-          sheetRef.current?.dismiss();
-        },
-      },
-    ]);
-  }, [category, deleteCategory]);
+    const ok = await confirm({
+      title: '이 카테고리를 삭제할까요?',
+      message: '이미 기록된 내역은 그대로 남아요.',
+    });
+    if (!ok) return;
+    deleteCategory(category.id);
+    sheetRef.current?.dismiss();
+  }, [category, deleteCategory, confirm]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (

@@ -62,6 +62,8 @@ export interface LedgerState {
   addTransaction: (input: NewTransactionInput) => Transaction;
   updateTransaction: (year: number, month: number, id: string, patch: TransactionPatch) => void;
   deleteTransaction: (year: number, month: number, id: string) => void;
+  /** Soft-delete every record in a month (parallels deleteYear, one bucket). */
+  deleteMonth: (year: number, month: number) => void;
 
   updateMonthlyBudget: (year: number, month: number, budget: number | null) => void;
   confirmBudget: (yearMonth: string) => void;
@@ -186,6 +188,23 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
             [key]: rows.map((r) =>
               r.id === id ? { ...r, deleted: true, updatedAt: nowIso() } : r,
             ),
+          },
+        };
+      });
+      persist();
+    },
+
+    deleteMonth: (year, month) => {
+      const key = monthKey(year, month);
+      set((s) => {
+        const rows = s.records[key];
+        if (!rows) return s;
+        const ts = nowIso();
+        // Soft-delete (tombstone) every row so the deletion survives the Drive merge.
+        return {
+          records: {
+            ...s.records,
+            [key]: rows.map((r) => (r.deleted ? r : { ...r, deleted: true, updatedAt: ts })),
           },
         };
       });
