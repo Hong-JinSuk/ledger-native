@@ -41,6 +41,8 @@ export default function SpreadsheetView() {
   const y = Number(year);
   const m = Number(month);
   const key = monthKey(y, m);
+  // A new record defaults to today's date when viewing the current month (else 미정/null).
+  const defaultAddDay = key === currentMonthKey() ? new Date().getDate() : null;
 
   const records = useLedgerStore((s) => s.records);
   const categories = useLedgerStore((s) => s.categories);
@@ -197,7 +199,7 @@ export default function SpreadsheetView() {
 
           {mode === 'list' ? (
             rows.length === 0 ? (
-              <EmptyState onAdd={openAdd} />
+              <EmptyState onAdd={() => openAdd(defaultAddDay)} />
             ) : dayGroups.length === 0 ? (
               <Text className="mt-8 text-center text-sm text-muted font-sans">
                 검색 결과가 없어요.
@@ -265,7 +267,7 @@ export default function SpreadsheetView() {
 
         {/* Add FAB */}
         <Pressable
-          onPress={() => openAdd(mode === 'calendar' ? selectedDay : null)}
+          onPress={() => openAdd(mode === 'calendar' ? selectedDay : defaultAddDay)}
           className="absolute bottom-6 right-5 h-14 w-14 items-center justify-center rounded-full bg-ink active:opacity-80"
           style={{
             elevation: 4,
