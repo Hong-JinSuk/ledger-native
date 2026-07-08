@@ -2,6 +2,7 @@ import 'react-native-url-polyfill/auto';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import { Platform } from 'react-native';
 
 /**
  * Supabase client — holds the USER account/profile + auth session only.
@@ -28,12 +29,17 @@ export const supabase = createClient(
   {
     auth: {
       // Session persists in AsyncStorage (app-sandboxed). The sensitive Google Drive refresh
-      // token goes to expo-secure-store separately (Phase 5 auth flow).
+      // token goes to expo-secure-store separately (see src/lib/auth/auth.ts).
       storage: AsyncStorage,
       autoRefreshToken: true,
       persistSession: true,
-      // Native has no URL to parse a session from (that's a web-only OAuth concern).
-      detectSessionInUrl: false,
+      // PKCE (not the supabase-js default of 'implicit'): more secure on native, and the redirect
+      // comes back with a `?code=` we exchange ourselves. AsyncStorage also holds the code_verifier
+      // between signInWithOAuth() and exchangeCodeForSession().
+      flowType: 'pkce',
+      // Web-only: let supabase auto-exchange the `?code=` in the page URL on return. On native we
+      // capture the redirect via expo-web-browser and exchange the code manually, so keep it off.
+      detectSessionInUrl: Platform.OS === 'web',
     },
   },
 );

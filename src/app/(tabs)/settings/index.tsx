@@ -1,14 +1,17 @@
 import { useRouter } from 'expo-router';
-import { ChevronRight, Layers, Plus } from 'lucide-react-native';
+import { ChevronRight, Layers, LogOut, Plus, User } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { AppHeader } from '@/components/app-header';
+import { useConfirm } from '@/components/confirm-dialog';
 import { FadeIn } from '@/components/fade-in';
 import { FixedExpenseDrawer, type FixedExpenseDrawerRef } from '@/components/fixed-expense-drawer';
 import { Screen } from '@/components/screen';
 import { Palette } from '@/constants/palette';
+import { signOut } from '@/lib/auth/auth';
 import { formatAmount, formatCurrency, parseAmount } from '@/lib/money';
+import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
 import type { FixedExpense } from '@/types/ledger';
 
@@ -20,6 +23,9 @@ export default function SettingsView() {
   const fixedExpenses = useLedgerStore((s) => s.settings.fixedExpenses);
   const categories = useLedgerStore((s) => s.categories);
   const updateSettings = useLedgerStore((s) => s.updateSettings);
+
+  const session = useAuthStore((s) => s.session);
+  const confirm = useConfirm();
 
   const categoryCount = categories.filter((c) => !c.deleted).length;
 
@@ -41,6 +47,16 @@ export default function SettingsView() {
   };
 
   const commitBudget = () => updateSettings({ budget: parseAmount(budgetText) });
+
+  const handleSignOut = async () => {
+    const ok = await confirm({
+      title: '로그아웃할까요?',
+      message: '이 기기에서 로그아웃돼요. 기록은 안전하게 보관돼요.',
+      confirmLabel: '로그아웃',
+      destructive: false,
+    });
+    if (ok) await signOut();
+  };
 
   return (
     <Screen>
@@ -124,6 +140,30 @@ export default function SettingsView() {
               ))}
             </View>
           )}
+        </FadeIn>
+
+        {/* Account */}
+        <FadeIn delay={180} style={{ marginTop: 28 }}>
+          <SectionHeader title="계정" />
+          <View className="rounded-2xl border border-line bg-white/60 px-5 py-4">
+            <View className="flex-row items-center">
+              <View className="h-10 w-10 items-center justify-center rounded-full bg-fill">
+                <User size={18} color={Palette.ink} />
+              </View>
+              <View className="ml-3 flex-1">
+                <Text className="text-[15px] text-ink font-sans-medium" numberOfLines={1}>
+                  {session?.user.email ?? '로그인됨'}
+                </Text>
+                <Text className="mt-0.5 text-xs text-muted font-sans">Google 계정으로 로그인</Text>
+              </View>
+            </View>
+            <Pressable
+              onPress={handleSignOut}
+              className="mt-4 flex-row items-center justify-center gap-2 rounded-full bg-fill py-3 active:opacity-70">
+              <LogOut size={15} color={Palette.expense} />
+              <Text className="text-sm text-expense font-sans-bold">로그아웃</Text>
+            </Pressable>
+          </View>
         </FadeIn>
       </ScrollView>
 

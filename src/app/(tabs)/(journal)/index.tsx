@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { ChevronRight, Plus, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { AmountStat } from '@/components/amount-stat';
 import { AppHeader } from '@/components/app-header';
@@ -21,6 +21,7 @@ export default function YearView() {
   const addYear = useLedgerStore((s) => s.addYear);
   const deleteYear = useLedgerStore((s) => s.deleteYear);
   const confirm = useConfirm();
+  const isWeb = Platform.OS === 'web';
 
   const [isAdding, setIsAdding] = useState(false);
   const [newYear, setNewYear] = useState('');
@@ -91,12 +92,12 @@ export default function YearView() {
             아직 연도가 없어요.{'\n'}위에서 기록할 연도를 더해보세요.
           </Text>
         ) : (
-          <View className="gap-4">
+          <View className={isWeb ? 'flex-row flex-wrap gap-4' : 'gap-4'}>
             {years.map((year, i) => {
               const summary = yearSummary(records, year);
               const remaining = yearRemainingBudget(records, settings, year);
               return (
-                <FadeIn key={year} delay={i * 70}>
+                <FadeIn key={year} delay={i * 70} style={isWeb ? { width: '31.5%' } : undefined}>
                   <Pressable
                     onPress={() =>
                       router.push({ pathname: '/[year]', params: { year: String(year) } })
