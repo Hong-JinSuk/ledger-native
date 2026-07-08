@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { ChevronRight, Plus, Trash2 } from 'lucide-react-native';
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { AmountStat } from '@/components/amount-stat';
@@ -10,6 +10,7 @@ import { FadeIn } from '@/components/fade-in';
 import { HoverReveal } from '@/components/hover-reveal';
 import { Screen } from '@/components/screen';
 import { Palette } from '@/constants/palette';
+import { useClickOutside } from '@/hooks/use-click-outside';
 import { yearRemainingBudget, yearSummary } from '@/lib/ledger/selectors';
 import { formatCurrency } from '@/lib/money';
 import { useLedgerStore } from '@/store/ledger-store';
@@ -26,6 +27,16 @@ export default function YearView() {
 
   const [isAdding, setIsAdding] = useState(false);
   const [newYear, setNewYear] = useState('');
+  const addRowRef = useRef<View>(null);
+
+  const cancelAdd = useCallback(() => {
+    setIsAdding(false);
+    setNewYear('');
+  }, []);
+
+  // Web: clicking anywhere outside the input row (or pressing Escape) cancels the add. The 추가
+  // button lives inside addRowRef, so its press is excluded and still commits.
+  useClickOutside(addRowRef, isAdding, cancelAdd);
 
   const handleAddYear = () => {
     const y = parseInt(newYear, 10);
@@ -49,7 +60,7 @@ export default function YearView() {
 
         {/* Add year */}
         {isAdding ? (
-          <View className="mb-5 flex-row items-center gap-2">
+          <View ref={addRowRef} className="mb-5 flex-row items-center gap-2">
             <TextInput
               value={newYear}
               onChangeText={(t) => setNewYear(t.replace(/[^0-9]/g, ''))}
@@ -66,13 +77,7 @@ export default function YearView() {
               className="rounded-full bg-ink px-5 py-3 active:opacity-80">
               <Text className="text-sm text-paper font-sans-bold">추가</Text>
             </Pressable>
-            <Pressable
-              onPress={() => {
-                setIsAdding(false);
-                setNewYear('');
-              }}
-              hitSlop={8}
-              className="px-2 py-3 active:opacity-60">
+            <Pressable onPress={cancelAdd} hitSlop={8} className="px-2 py-3 active:opacity-60">
               <Text className="text-sm text-muted font-sans-medium">취소</Text>
             </Pressable>
           </View>
@@ -190,11 +195,11 @@ function WebYearCard({
         <AmountStat label="지출" amount={expense} tone="expense" />
       </View>
 
-      {remaining !== null && (
-        <Text className="mt-3 text-xs text-muted font-sans">
-          남은 예산 · {formatCurrency(remaining, currency)}
-        </Text>
-      )}
+      {/* Always render so every card is the same height; '—' when no budget is set (matches the
+          month cards). null = 예산 미설정 (not "0 remaining"), so we don't show a misleading 0원. */}
+      <Text className="mt-3 text-xs text-muted font-sans">
+        남은 예산 · {remaining !== null ? formatCurrency(remaining, currency) : '—'}
+      </Text>
 
       <HoverReveal hovered={hovered} label={hasData ? '이어서 기록하기' : '기록 시작하기'} />
 
