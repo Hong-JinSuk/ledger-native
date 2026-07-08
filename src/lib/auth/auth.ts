@@ -23,15 +23,24 @@ export const DRIVE_REFRESH_TOKEN_KEY = 'google_provider_refresh_token';
 
 /**
  * Where Google → Supabase → the app lands back.
- *  • Expo Go:        exp://<host>:8081/--/auth/callback   (the `scheme` is ignored in Expo Go)
- *  • Dev/standalone: myapp://auth/callback
- *  • Web:            <origin>/auth/callback
- * We log it in dev so the exact value can be pasted into Supabase's Redirect URLs allow-list.
+ *
+ * Native (Expo Go AND dev/standalone) uses a FIXED `myapp://auth/callback` — NOT makeRedirectUri().
+ * In Expo Go makeRedirectUri() returns `exp://<LAN-IP>:8081/--/auth/callback`, whose IP changes per
+ * network (hotspot → 172.20.10.x, other Wi-Fi → something else). Supabase's redirect allow-list
+ * matched that long IP+port+`/--/` exp URL unreliably, so it fell back to its Site URL (localhost)
+ * and the browser dead-ended on the phone. A fixed scheme URL fixes both ends:
+ *   • Supabase matches `myapp://**` every time (no IP/port/`/--/`), and
+ *   • iOS ASWebAuthenticationSession intercepts it *by scheme* — in-process, so it works even in
+ *     Expo Go where `myapp://` isn't OS-registered. (Also correct for a dev/standalone build.)
+ * Web keeps the origin-based redirect (needs `http://localhost:8081/**` allow-listed in dev).
  */
-export const redirectTo = makeRedirectUri({ scheme: 'myapp', path: 'auth/callback' });
+export const redirectTo =
+  Platform.OS === 'web'
+    ? makeRedirectUri({ scheme: 'myapp', path: 'auth/callback' })
+    : 'myapp://auth/callback';
 
 if (__DEV__) {
-  // Dev-only: prints the exact redirect URL to paste into Supabase's Redirect URLs allow-list.
+  // Dev-only: prints the exact redirect URL (also shown on the login screen).
   console.log('[auth] redirectTo =', redirectTo);
 }
 
