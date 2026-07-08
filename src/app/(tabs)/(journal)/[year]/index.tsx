@@ -59,8 +59,8 @@ export default function MonthView() {
         {/* Full-width hairline under the header + "< YEARS" (web only). */}
         {isWeb ? <View className="mb-6 mt-5 h-px bg-line" /> : null}
 
-        {/* Web: 4-up grid that grows to fill the full width (right edge aligns with the header
-            totals). Native: 2-up (unchanged). */}
+        {/* Same rich card on both platforms — only the grid density differs: web 4-up (grows to
+            fill the full width, aligning with the header totals), native 2-up for the narrow phone. */}
         <View className={isWeb ? 'flex-row flex-wrap gap-3.5' : 'flex-row flex-wrap justify-between gap-y-3'}>
           {MONTH_ABBR.map((abbr, i) => {
             const month = i + 1;
@@ -77,38 +77,15 @@ export default function MonthView() {
                 key={month}
                 style={isWeb ? { flexGrow: 1, flexBasis: '22%' } : { width: '48%' }}
                 delay={i * 30}>
-                {isWeb ? (
-                  <WebMonthCard
-                    abbr={abbr}
-                    month={month}
-                    hasData={activeRows(rows).length > 0}
-                    income={summary.income}
-                    expense={summary.expense}
-                    remaining={remaining}
-                    onPress={goToMonth}
-                  />
-                ) : (
-                  <Pressable
-                    onPress={goToMonth}
-                    className="w-full rounded-2xl border border-line bg-white/60 px-4 py-4 active:opacity-60">
-                    <Text className="text-[11px] uppercase tracking-[2px] text-muted font-sans-bold">
-                      {abbr}
-                    </Text>
-                    {/* Always two rows so every card is the same height (budget or not). */}
-                    <View className="mt-3 gap-1.5">
-                      <MonthStatRow
-                        label="남은"
-                        value={remaining !== null ? formatAmount(remaining) : '—'}
-                        toneClass={remaining !== null && remaining < 0 ? 'text-expense' : 'text-ink'}
-                      />
-                      <MonthStatRow
-                        label="지출"
-                        value={formatAmount(summary.expense)}
-                        toneClass={summary.expense > 0 ? 'text-expense' : 'text-muted'}
-                      />
-                    </View>
-                  </Pressable>
-                )}
+                <MonthCard
+                  abbr={abbr}
+                  month={month}
+                  hasData={activeRows(rows).length > 0}
+                  income={summary.income}
+                  expense={summary.expense}
+                  remaining={remaining}
+                  onPress={goToMonth}
+                />
               </FadeIn>
             );
           })}
@@ -118,33 +95,13 @@ export default function MonthView() {
   );
 }
 
-function MonthStatRow({
-  label,
-  value,
-  toneClass,
-}: {
-  label: string;
-  value: string;
-  toneClass: string;
-}) {
-  return (
-    <View className="flex-row items-baseline justify-between">
-      <Text className="text-[10px] uppercase tracking-wider text-muted font-sans-semibold">
-        {label}
-      </Text>
-      <Text numberOfLines={1} className={`ml-2 shrink text-sm font-mono-medium ${toneClass}`}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
 /**
- * Web-only richer month card (ported from the original web): serif month name + faint "N월" badge,
- * and 수입 / 지출 / 잔여 예산 for months with records — otherwise a soft "아직 기록이 없습니다".
- * A fixed minHeight keeps every card in the 4-up grid the same size.
+ * Rich month card, shared by web and native (ported from the original web): serif month name +
+ * faint "N월" badge, and 수입 / 지출 / 잔여 예산 for months with records — otherwise a soft
+ * "아직 기록이 없습니다". A fixed minHeight keeps every card the same size. HoverReveal only shows
+ * on web: touch has no hover, so `hovered` stays false on native and the overlay never appears.
  */
-function WebMonthCard({
+function MonthCard({
   abbr,
   month,
   hasData,
@@ -182,11 +139,11 @@ function WebMonthCard({
         <View className="mt-5">
           {/* 수입 · 지출 grouped, then a hairline before the derived 잔여 예산 (matches the web original). */}
           <View className="gap-2.5">
-            <WebMonthRow label="수입" value={formatAmount(income)} toneClass="text-income" />
-            <WebMonthRow label="지출" value={formatAmount(-expense)} toneClass="text-expense" />
+            <MonthRow label="수입" value={formatAmount(income)} toneClass="text-income" />
+            <MonthRow label="지출" value={formatAmount(-expense)} toneClass="text-expense" />
           </View>
           <View className="my-3.5 h-px bg-line" />
-          <WebMonthRow
+          <MonthRow
             label="잔여 예산"
             value={remaining !== null ? formatAmount(remaining) : '—'}
             toneClass={remaining !== null && remaining < 0 ? 'text-expense' : 'text-ink'}
@@ -203,7 +160,7 @@ function WebMonthCard({
   );
 }
 
-function WebMonthRow({
+function MonthRow({
   label,
   value,
   toneClass,

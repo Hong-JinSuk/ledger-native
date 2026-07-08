@@ -140,11 +140,11 @@ export default function YearView() {
                         <AmountStat label="지출" amount={summary.expense} tone="expense" />
                       </View>
 
-                      {remaining !== null && (
-                        <Text className="mt-3 text-xs text-muted font-sans">
-                          남은 예산 · {formatCurrency(remaining, settings.currency)}
-                        </Text>
-                      )}
+                      {/* Always rendered ('—' when no budget) so cards keep equal height — matches web. */}
+                      <Text className="mt-3 text-xs text-muted font-sans">
+                        남은 예산 ·{' '}
+                        {remaining !== null ? formatCurrency(remaining, settings.currency) : '—'}
+                      </Text>
                     </Pressable>
                   )}
                 </FadeIn>
