@@ -7,6 +7,7 @@ import { AmountStat } from '@/components/amount-stat';
 import { AppHeader } from '@/components/app-header';
 import { useConfirm } from '@/components/confirm-dialog';
 import { FadeIn } from '@/components/fade-in';
+import { HoverReveal } from '@/components/hover-reveal';
 import { Screen } from '@/components/screen';
 import { Palette } from '@/constants/palette';
 import { yearRemainingBudget, yearSummary } from '@/lib/ledger/selectors';
@@ -98,35 +99,49 @@ export default function YearView() {
               const remaining = yearRemainingBudget(records, settings, year);
               return (
                 <FadeIn key={year} delay={i * 70} style={isWeb ? { width: '31.5%' } : undefined}>
-                  <Pressable
-                    onPress={() =>
-                      router.push({ pathname: '/[year]', params: { year: String(year) } })
-                    }
-                    className="rounded-2xl border border-line bg-white/60 px-5 py-5 active:opacity-60">
-                    <View className="flex-row items-center justify-between">
-                      <Text className="text-3xl text-ink font-serif">{year}</Text>
-                      <View className="flex-row items-center gap-1">
-                        <Pressable
-                          onPress={() => confirmDeleteYear(year)}
-                          hitSlop={8}
-                          className="p-1.5 active:opacity-50">
-                          <Trash2 size={16} color={Palette.muted} />
-                        </Pressable>
-                        <ChevronRight size={20} color={Palette.muted} />
+                  {isWeb ? (
+                    <WebYearCard
+                      year={year}
+                      income={summary.income}
+                      expense={summary.expense}
+                      remaining={remaining}
+                      currency={settings.currency}
+                      onPress={() =>
+                        router.push({ pathname: '/[year]', params: { year: String(year) } })
+                      }
+                      onDelete={() => confirmDeleteYear(year)}
+                    />
+                  ) : (
+                    <Pressable
+                      onPress={() =>
+                        router.push({ pathname: '/[year]', params: { year: String(year) } })
+                      }
+                      className="rounded-2xl border border-line bg-white/60 px-5 py-5 active:opacity-60">
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-3xl text-ink font-serif">{year}</Text>
+                        <View className="flex-row items-center gap-1">
+                          <Pressable
+                            onPress={() => confirmDeleteYear(year)}
+                            hitSlop={8}
+                            className="p-1.5 active:opacity-50">
+                            <Trash2 size={16} color={Palette.muted} />
+                          </Pressable>
+                          <ChevronRight size={20} color={Palette.muted} />
+                        </View>
                       </View>
-                    </View>
 
-                    <View className="mt-4 flex-row gap-6">
-                      <AmountStat label="수입" amount={summary.income} tone="income" />
-                      <AmountStat label="지출" amount={summary.expense} tone="expense" />
-                    </View>
+                      <View className="mt-4 flex-row gap-6">
+                        <AmountStat label="수입" amount={summary.income} tone="income" />
+                        <AmountStat label="지출" amount={summary.expense} tone="expense" />
+                      </View>
 
-                    {remaining !== null && (
-                      <Text className="mt-3 text-xs text-muted font-sans">
-                        남은 예산 · {formatCurrency(remaining, settings.currency)}
-                      </Text>
-                    )}
-                  </Pressable>
+                      {remaining !== null && (
+                        <Text className="mt-3 text-xs text-muted font-sans">
+                          남은 예산 · {formatCurrency(remaining, settings.currency)}
+                        </Text>
+                      )}
+                    </Pressable>
+                  )}
                 </FadeIn>
               );
             })}
@@ -134,5 +149,62 @@ export default function YearView() {
         )}
       </ScrollView>
     </Screen>
+  );
+}
+
+/**
+ * Web-only year card with a hover-reveal CTA (ported from the original web). On mouse-over a frosted
+ * overlay fades in with "이어서 기록하기" / "기록 시작하기". The trash sits above the overlay so it
+ * stays clickable while hovering. Native uses the plain card (no hover on touch).
+ */
+function WebYearCard({
+  year,
+  income,
+  expense,
+  remaining,
+  currency,
+  onPress,
+  onDelete,
+}: {
+  year: number;
+  income: number;
+  expense: number;
+  remaining: number | null;
+  currency: string;
+  onPress: () => void;
+  onDelete: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const hasData = income > 0 || expense > 0;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      className="overflow-hidden rounded-2xl border border-line bg-white/60 px-5 py-5 active:opacity-90">
+      <Text className="text-3xl text-ink font-serif">{year}</Text>
+
+      <View className="mt-4 flex-row gap-6">
+        <AmountStat label="수입" amount={income} tone="income" />
+        <AmountStat label="지출" amount={expense} tone="expense" />
+      </View>
+
+      {remaining !== null && (
+        <Text className="mt-3 text-xs text-muted font-sans">
+          남은 예산 · {formatCurrency(remaining, currency)}
+        </Text>
+      )}
+
+      <HoverReveal hovered={hovered} label={hasData ? '이어서 기록하기' : '기록 시작하기'} />
+
+      {/* Above the overlay → stays visible + clickable on hover. */}
+      <Pressable
+        onPress={onDelete}
+        hitSlop={8}
+        className="absolute right-3 top-3 p-1.5 active:opacity-50">
+        <Trash2 size={16} color={Palette.muted} />
+      </Pressable>
+    </Pressable>
   );
 }

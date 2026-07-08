@@ -1,10 +1,12 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { AmountStat } from '@/components/amount-stat';
 import { AppHeader } from '@/components/app-header';
 import { BackLink } from '@/components/back-link';
 import { FadeIn } from '@/components/fade-in';
+import { HoverReveal } from '@/components/hover-reveal';
 import { Screen } from '@/components/screen';
 import { monthKey } from '@/lib/date';
 import { activeRows, monthRemainingBudget, monthSummary, yearSummary } from '@/lib/ledger/selectors';
@@ -159,11 +161,14 @@ function WebMonthCard({
   remaining: number | null;
   onPress: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   return (
     <Pressable
       onPress={onPress}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
       style={{ minHeight: 186 }}
-      className="w-full rounded-2xl border border-line bg-white/60 px-5 py-5 active:opacity-60">
+      className="w-full overflow-hidden rounded-2xl border border-line bg-white/60 px-5 py-5 active:opacity-60">
       <View className="flex-row items-start justify-between">
         <Text className="text-3xl text-ink font-serif">{abbr}</Text>
         <Text
@@ -192,6 +197,8 @@ function WebMonthCard({
           <Text className="text-sm text-muted font-sans">아직 기록이 없습니다</Text>
         </View>
       )}
+
+      <HoverReveal hovered={hovered} label={hasData ? '이어서 기록하기' : '기록 시작하기'} />
     </Pressable>
   );
 }
