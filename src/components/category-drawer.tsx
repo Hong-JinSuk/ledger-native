@@ -6,7 +6,7 @@ import {
 } from '@gorhom/bottom-sheet';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus, Trash2, X } from 'lucide-react-native';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Pressable, Text, View } from 'react-native';
 
@@ -21,15 +21,13 @@ import type { CategoryItem, TransactionType } from '@/types/ledger';
 
 const TYPES: TransactionType[] = ['지출', '수입', '이체'];
 
-export type CategoryDrawerRef = { present: () => void; dismiss: () => void };
-
-type Props = {
-  /** The category being edited, or null to add a new one. */
-  category: CategoryItem | null;
-  /** Type pre-selected for a new category (the active tab in CategoryManager). */
-  defaultType?: TransactionType;
-  onClose?: () => void;
+export type CategoryDrawerRef = {
+  /** Open the sheet. Pass a category to edit, or nothing/null (+ optional type) to add a new one. */
+  present: (category?: CategoryItem | null, defaultType?: TransactionType) => void;
+  dismiss: () => void;
 };
+
+type Props = { onClose?: () => void };
 
 function toDefaults(category: CategoryItem | null, defaultType: TransactionType): CategoryFormValues {
   if (!category) {
@@ -44,14 +42,12 @@ function toDefaults(category: CategoryItem | null, defaultType: TransactionType)
 }
 
 export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function CategoryDrawer(
-  { category, defaultType = '지출', onClose },
+  { onClose },
   ref,
 ) {
   const sheetRef = useRef<BottomSheetModal>(null);
-  useImperativeHandle(ref, () => ({
-    present: () => sheetRef.current?.present(),
-    dismiss: () => sheetRef.current?.dismiss(),
-  }));
+  // The drawer owns "which category" (set at present time) — a fresh add always opens blank.
+  const [category, setCategory] = useState<CategoryItem | null>(null);
 
   const addCategory = useLedgerStore((s) => s.addCategory);
   const updateCategory = useLedgerStore((s) => s.updateCategory);
@@ -62,13 +58,19 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
   const [subInput, setSubInput] = useState('');
   const { control, handleSubmit, reset } = useForm<CategoryFormValues>({
     resolver: zodResolver(categoryFormSchema),
-    defaultValues: toDefaults(category, defaultType),
+    defaultValues: toDefaults(null, '지출'),
   });
 
-  useEffect(() => {
-    reset(toDefaults(category, defaultType));
-    setSubInput('');
-  }, [category, defaultType, reset]);
+  useImperativeHandle(ref, () => ({
+    present: (cat = null, defaultType = '지출') => {
+      setCategory(cat);
+      // Reset on every open (form + subcategory input) so a fresh add never carries over prior data.
+      reset(toDefaults(cat, defaultType));
+      setSubInput('');
+      sheetRef.current?.present();
+    },
+    dismiss: () => sheetRef.current?.dismiss(),
+  }));
 
   const onSubmit = useCallback(
     (values: CategoryFormValues) => {

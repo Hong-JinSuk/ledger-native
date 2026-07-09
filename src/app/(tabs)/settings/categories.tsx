@@ -29,15 +29,8 @@ export default function CategoryManager() {
   );
 
   const drawerRef = useRef<CategoryDrawerRef>(null);
-  const [editing, setEditing] = useState<CategoryItem | null>(null);
-  const openAdd = () => {
-    setEditing(null);
-    drawerRef.current?.present();
-  };
-  const openEdit = (category: CategoryItem) => {
-    setEditing(category);
-    drawerRef.current?.present();
-  };
+  const openAdd = () => drawerRef.current?.present(null, activeTab);
+  const openEdit = (category: CategoryItem) => drawerRef.current?.present(category);
 
   return (
     <Screen>
@@ -104,12 +97,7 @@ export default function CategoryManager() {
         </Pressable>
       </ScrollView>
 
-      <CategoryDrawer
-        ref={drawerRef}
-        category={editing}
-        defaultType={activeTab}
-        onClose={() => setEditing(null)}
-      />
+      <CategoryDrawer ref={drawerRef} />
     </Screen>
   );
 }
