@@ -6,7 +6,7 @@ import {
 } from '@gorhom/bottom-sheet';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Trash2 } from 'lucide-react-native';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
@@ -22,15 +22,15 @@ import type { Transaction, TransactionType } from '@/types/ledger';
 
 const TYPES: TransactionType[] = ['지출', '수입', '이체'];
 
-export type RecordDrawerRef = { present: () => void; dismiss: () => void };
+export type RecordDrawerRef = {
+  /** Open the sheet. Pass a transaction to edit, or nothing/null (+ optional day) to add a new one. */
+  present: (transaction?: Transaction | null, defaultDay?: number | null) => void;
+  dismiss: () => void;
+};
 
 type Props = {
   year: number;
   month: number;
-  /** The row being edited, or null to add a new one. */
-  transaction: Transaction | null;
-  /** Day to pre-fill for a NEW row (e.g. the day selected in calendar view). */
-  defaultDay?: number | null;
   onClose?: () => void;
 };
 
@@ -49,14 +49,13 @@ function toDefaults(tx: Transaction | null, defaultDay: number | null): Transact
 }
 
 export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDrawer(
-  { year, month, transaction, defaultDay = null, onClose },
+  { year, month, onClose },
   ref,
 ) {
   const sheetRef = useRef<BottomSheetModal>(null);
-  useImperativeHandle(ref, () => ({
-    present: () => sheetRef.current?.present(),
-    dismiss: () => sheetRef.current?.dismiss(),
-  }));
+  // The drawer owns "which row" (set at present time), so a fresh add always opens blank instead of
+  // reusing the previous entry — decoupled from the parent's async state.
+  const [transaction, setTransaction] = useState<Transaction | null>(null);
 
   const categories = useLedgerStore((s) => s.categories);
   const addTransaction = useLedgerStore((s) => s.addTransaction);
@@ -67,12 +66,18 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   const isEdit = transaction != null;
   const { control, handleSubmit, reset, watch, setValue } = useForm<TransactionFormValues>({
     resolver: zodResolver(transactionFormSchema),
-    defaultValues: toDefaults(transaction, defaultDay),
+    defaultValues: toDefaults(null, null),
   });
 
-  useEffect(() => {
-    reset(toDefaults(transaction, defaultDay));
-  }, [transaction, defaultDay, reset]);
+  useImperativeHandle(ref, () => ({
+    present: (tx = null, defaultDay = null) => {
+      setTransaction(tx);
+      // Reset on every open so a fresh add never carries over the previous entry.
+      reset(toDefaults(tx, defaultDay));
+      sheetRef.current?.present();
+    },
+    dismiss: () => sheetRef.current?.dismiss(),
+  }));
 
   const selectedType = watch('type');
   const visibleCategories = useMemo(

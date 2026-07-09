@@ -56,18 +56,10 @@ export default function SpreadsheetView() {
 
   const drawerRef = useRef<RecordDrawerRef>(null);
   const budgetRef = useRef<BudgetDrawerRef>(null);
-  const [editing, setEditing] = useState<Transaction | null>(null);
-  const [addDay, setAddDay] = useState<number | null>(null);
   // `day` is optional; the `typeof` guard drops any GestureResponderEvent when wired to onPress.
-  const openAdd = (day?: number | null) => {
-    setEditing(null);
-    setAddDay(typeof day === 'number' ? day : null);
-    drawerRef.current?.present();
-  };
-  const openEdit = (tx: Transaction) => {
-    setEditing(tx);
-    drawerRef.current?.present();
-  };
+  const openAdd = (day?: number | null) =>
+    drawerRef.current?.present(null, typeof day === 'number' ? day : null);
+  const openEdit = (tx: Transaction) => drawerRef.current?.present(tx);
 
   const onDeleteMonth = async () => {
     const ok = await confirm({
@@ -280,14 +272,7 @@ export default function SpreadsheetView() {
         </Pressable>
       </View>
 
-      <RecordDrawer
-        ref={drawerRef}
-        year={y}
-        month={m}
-        transaction={editing}
-        defaultDay={addDay}
-        onClose={() => setEditing(null)}
-      />
+      <RecordDrawer ref={drawerRef} year={y} month={m} />
       <BudgetDrawer ref={budgetRef} year={y} month={m} />
     </Screen>
   );
