@@ -5,8 +5,8 @@ import {
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Trash2 } from 'lucide-react-native';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import { Check, Plus, Trash2 } from 'lucide-react-native';
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
@@ -19,13 +19,13 @@ import { fixedExpenseFormSchema, type FixedExpenseFormValues } from '@/schemas/f
 import { useLedgerStore } from '@/store/ledger-store';
 import type { FixedExpense } from '@/types/ledger';
 
-export type FixedExpenseDrawerRef = { present: () => void; dismiss: () => void };
-
-type Props = {
-  /** The fixed expense being edited, or null to add a new one. */
-  expense: FixedExpense | null;
-  onClose?: () => void;
+export type FixedExpenseDrawerRef = {
+  /** Open the sheet. Pass an expense to edit, or nothing/null to add a new one. */
+  present: (expense?: FixedExpense | null) => void;
+  dismiss: () => void;
 };
+
+type Props = { onClose?: () => void };
 
 function toDefaults(expense: FixedExpense | null, types: string[]): FixedExpenseFormValues {
   if (!expense) {
@@ -41,28 +41,61 @@ function toDefaults(expense: FixedExpense | null, types: string[]): FixedExpense
 }
 
 export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
-  function FixedExpenseDrawer({ expense, onClose }, ref) {
+  function FixedExpenseDrawer({ onClose }, ref) {
     const sheetRef = useRef<BottomSheetModal>(null);
-    useImperativeHandle(ref, () => ({
-      present: () => sheetRef.current?.present(),
-      dismiss: () => sheetRef.current?.dismiss(),
-    }));
+    // The drawer owns "which expense" (set at present time) — decoupled from parent async state so a
+    // fresh +추가 always opens blank instead of leaking the previous entry.
+    const [expense, setExpense] = useState<FixedExpense | null>(null);
 
     const types = useLedgerStore((s) => s.settings.fixedExpenseTypes);
     const updateSettings = useLedgerStore((s) => s.updateSettings);
     const confirm = useConfirm();
 
-    const isEdit = expense != null;
     const { control, handleSubmit, reset } = useForm<FixedExpenseFormValues>({
       resolver: zodResolver(fixedExpenseFormSchema),
-      defaultValues: toDefaults(expense, types),
+      defaultValues: toDefaults(null, types),
     });
 
-    useEffect(() => {
-      reset(toDefaults(expense, types));
-    }, [expense, types, reset]);
+    useImperativeHandle(ref, () => ({
+      present: (e = null) => {
+        setExpense(e);
+        // Reset on every open, reading the freshest types — never carries over the last entry.
+        reset(toDefaults(e, useLedgerStore.getState().settings.fixedExpenseTypes));
+        sheetRef.current?.present();
+      },
+      dismiss: () => sheetRef.current?.dismiss(),
+    }));
 
+    const isEdit = expense != null;
     const days = useMemo(() => Array.from({ length: 31 }, (_, i) => i + 1), []);
+
+    // Type (유형) inline add / delete.
+    const [addingType, setAddingType] = useState(false);
+    const [newType, setNewType] = useState('');
+
+    const commitNewType = useCallback(
+      (select: (t: string) => void) => {
+        const name = newType.trim();
+        if (name) {
+          if (!types.includes(name)) updateSettings({ fixedExpenseTypes: [...types, name] });
+          select(name);
+        }
+        setNewType('');
+        setAddingType(false);
+      },
+      [newType, types, updateSettings],
+    );
+
+    const deleteType = useCallback(
+      async (t: string) => {
+        const ok = await confirm({
+          title: `'${t}' 유형을 삭제할까요?`,
+          message: '이 유형이 목록에서 사라져요. (기존 기록은 그대로예요.)',
+        });
+        if (ok) updateSettings({ fixedExpenseTypes: types.filter((x) => x !== t) });
+      },
+      [types, updateSettings, confirm],
+    );
 
     const onSubmit = useCallback(
       (values: FixedExpenseFormValues) => {
@@ -154,30 +187,64 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
             />
           </Field>
 
-          {/* Type */}
+          {/* Type — tap to select, long-press to delete, "+ 유형" to add a new one */}
           <Field label="유형">
             <Controller
               control={control}
               name="type"
               render={({ field }) => (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View className="flex-row gap-2">
-                    {types.map((t) => {
-                      const active = field.value === t;
-                      return (
+                <View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View className="flex-row items-center gap-2">
+                      {types.map((t) => {
+                        const active = field.value === t;
+                        return (
+                          <Pressable
+                            key={t}
+                            onPress={() => field.onChange(t)}
+                            onLongPress={() => deleteType(t)}
+                            delayLongPress={350}
+                            className={`rounded-full px-4 py-2.5 ${active ? 'bg-ink' : 'bg-fill'}`}>
+                            <Text
+                              className={`text-sm font-sans-semibold ${active ? 'text-paper' : 'text-muted'}`}>
+                              {t}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+
+                      {addingType ? (
+                        <View className="flex-row items-center gap-1 rounded-full bg-fill py-1 pl-3.5 pr-1">
+                          <SheetTextInput
+                            value={newType}
+                            onChangeText={setNewType}
+                            onSubmitEditing={() => commitNewType(field.onChange)}
+                            autoFocus
+                            placeholder="새 유형"
+                            placeholderTextColor={Palette.muted}
+                            className="min-w-[56px] text-sm text-ink font-sans-semibold"
+                          />
+                          <Pressable
+                            onPress={() => commitNewType(field.onChange)}
+                            hitSlop={6}
+                            className="h-7 w-7 items-center justify-center rounded-full bg-ink active:opacity-80">
+                            <Check size={14} color={Palette.paper} strokeWidth={3} />
+                          </Pressable>
+                        </View>
+                      ) : (
                         <Pressable
-                          key={t}
-                          onPress={() => field.onChange(t)}
-                          className={`rounded-full px-4 py-2.5 ${active ? 'bg-ink' : 'bg-fill'}`}>
-                          <Text
-                            className={`text-sm font-sans-semibold ${active ? 'text-paper' : 'text-muted'}`}>
-                            {t}
-                          </Text>
+                          onPress={() => setAddingType(true)}
+                          className="flex-row items-center gap-1 rounded-full border border-dashed border-line px-3.5 py-2.5 active:opacity-70">
+                          <Plus size={13} color={Palette.muted} />
+                          <Text className="text-sm text-muted font-sans-semibold">유형</Text>
                         </Pressable>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
+                      )}
+                    </View>
+                  </ScrollView>
+                  <Text className="mt-2 text-[11px] text-muted font-sans">
+                    유형을 길게 누르면 삭제할 수 있어요.
+                  </Text>
+                </View>
               )}
             />
           </Field>

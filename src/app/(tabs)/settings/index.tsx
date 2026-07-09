@@ -41,15 +41,8 @@ export default function SettingsView() {
   }, [settingsBudget]);
 
   const drawerRef = useRef<FixedExpenseDrawerRef>(null);
-  const [editing, setEditing] = useState<FixedExpense | null>(null);
-  const openAdd = () => {
-    setEditing(null);
-    drawerRef.current?.present();
-  };
-  const openEdit = (expense: FixedExpense) => {
-    setEditing(expense);
-    drawerRef.current?.present();
-  };
+  const openAdd = () => drawerRef.current?.present();
+  const openEdit = (expense: FixedExpense) => drawerRef.current?.present(expense);
 
   const commitBudget = () => updateSettings({ budget: parseAmount(budgetText) });
 
@@ -209,11 +202,7 @@ export default function SettingsView() {
         </FadeIn>
       </ScrollView>
 
-      <FixedExpenseDrawer
-        ref={drawerRef}
-        expense={editing}
-        onClose={() => setEditing(null)}
-      />
+      <FixedExpenseDrawer ref={drawerRef} />
     </Screen>
   );
 }
