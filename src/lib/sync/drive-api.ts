@@ -1,4 +1,4 @@
-import { getDriveAccessToken } from '@/lib/sync/drive-auth';
+import { getDriveAccessToken, refreshDriveAccessToken } from '@/lib/sync/drive-auth';
 import type { LedgerSnapshot } from '@/types/ledger';
 
 /**
@@ -27,16 +27,31 @@ export class DriveAuthError extends Error {
   }
 }
 
-/** Authed fetch to a Google API. Adds the Bearer token and normalizes auth / HTTP errors. */
-async function driveFetch(url: string, init?: RequestInit): Promise<Response> {
-  const token = await getDriveAccessToken();
-  if (!token) throw new DriveAuthError('구글 인증이 필요해요. 다시 로그인해주세요.');
+/**
+ * Authed fetch to a Google API. Adds the Bearer token and normalizes auth / HTTP errors.
+ *
+ * Reactive token refresh (Phase 6b): the stored access token may be expired. On the first attempt we
+ * use it as-is; if Drive answers 401/403 we mint a fresh token via the edge function and retry the
+ * exact same request ONCE (`retried` caps it at one extra round-trip, so no loop). If there's no
+ * stored token at all, we go straight to a refresh.
+ */
+async function driveFetch(url: string, init?: RequestInit, retried = false): Promise<Response> {
+  const token = retried ? await refreshDriveAccessToken() : await getDriveAccessToken();
+  if (!token) {
+    // First pass with no stored token → try to mint one; if the refresh itself failed → re-login.
+    if (!retried) return driveFetch(url, init, true);
+    throw new DriveAuthError();
+  }
 
   const res = await fetch(url, {
     ...init,
     headers: { ...(init?.headers ?? {}), Authorization: `Bearer ${token}` },
   });
 
+  // Access token expired → refresh once via the edge function, then retry the same request.
+  if ((res.status === 401 || res.status === 403) && !retried) {
+    return driveFetch(url, init, true);
+  }
   if (res.status === 401 || res.status === 403) throw new DriveAuthError();
   if (!res.ok) {
     const detail = await res.text().catch(() => res.statusText);

@@ -5,6 +5,7 @@ const expoConfig = require("eslint-config-expo/flat");
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ["dist/*"],
+    // Deno edge functions run on Supabase, not in the RN app — keep them out of the app's lint.
+    ignores: ["dist/*", "supabase/**"],
   }
 ]);
