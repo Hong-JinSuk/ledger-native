@@ -75,12 +75,26 @@ export interface Settings {
 }
 
 /**
+ * Per-year sync state. `years` is a plain number[] with no id/tombstone, so a year deletion couldn't
+ * survive the Drive merge — it just got unioned back. This gives each year add/delete a timestamp so
+ * deletions propagate and a later re-add wins by recency.
+ */
+export interface YearMeta {
+  /** ISO-8601 of this year's last add/delete. */
+  updatedAt: string;
+  /** True if the year was deleted (its transactions are separately tombstoned). */
+  deleted: boolean;
+}
+
+/**
  * The full persisted/synced ledger document. Maps 1:1 to the AsyncStorage snapshot
  * today and to the Google Drive JSON file later.
  */
 export interface LedgerSnapshot {
   version: number;
   years: number[];
+  /** Per-year add/delete state, keyed by year string. Optional — snapshots written before this omit it. */
+  yearMeta?: Record<string, YearMeta>;
   /** Transactions bucketed by month. Key: 'YYYY-MM'. */
   records: Record<string, Transaction[]>;
   categories: CategoryItem[];

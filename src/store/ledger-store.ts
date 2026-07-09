@@ -12,6 +12,7 @@ import type {
   Settings,
   Transaction,
   TransactionType,
+  YearMeta,
 } from '@/types/ledger';
 
 const storage: LedgerStorage = asyncStorageLedger;
@@ -50,6 +51,8 @@ export interface LedgerState {
   /** True once the on-device snapshot has been loaded (or seeded on first launch). */
   hydrated: boolean;
   years: number[];
+  /** Per-year add/delete state (keyed by year string) so year deletions survive the Drive merge. */
+  yearMeta: Record<string, YearMeta>;
   records: Record<string, Transaction[]>;
   categories: CategoryItem[];
   settings: Settings;
@@ -80,13 +83,21 @@ export interface LedgerState {
 export const useLedgerStore = create<LedgerState>((set, get) => {
   /** Snapshot the persistable slice and write it through to storage. */
   const persist = () => {
-    const { years, records, categories, settings } = get();
-    persistSnapshot({ version: LEDGER_SNAPSHOT_VERSION, years, records, categories, settings });
+    const { years, yearMeta, records, categories, settings } = get();
+    persistSnapshot({
+      version: LEDGER_SNAPSHOT_VERSION,
+      years,
+      yearMeta,
+      records,
+      categories,
+      settings,
+    });
   };
 
   return {
     hydrated: false,
     years: [new Date().getFullYear()],
+    yearMeta: {},
     records: {},
     categories: DEFAULT_CATEGORIES,
     settings: DEFAULT_SETTINGS,
@@ -96,6 +107,7 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
       if (snapshot) {
         set({
           years: snapshot.years?.length ? snapshot.years : [new Date().getFullYear()],
+          yearMeta: snapshot.yearMeta ?? {},
           records: snapshot.records ?? {},
           categories: snapshot.categories?.length ? snapshot.categories : DEFAULT_CATEGORIES,
           settings: { ...DEFAULT_SETTINGS, ...snapshot.settings },
@@ -113,6 +125,7 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
         const current: LedgerSnapshot = {
           version: LEDGER_SNAPSHOT_VERSION,
           years: s.years,
+          yearMeta: s.yearMeta,
           records: s.records,
           categories: s.categories,
           settings: s.settings,
@@ -122,6 +135,7 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
         const merged = mergeLedger(current, incoming);
         return {
           years: merged.years,
+          yearMeta: merged.yearMeta ?? {},
           records: merged.records,
           categories: merged.categories,
           settings: merged.settings,
@@ -131,9 +145,11 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
     },
 
     addYear: (year) => {
-      set((s) =>
-        s.years.includes(year) ? s : { years: [...s.years, year].sort((a, b) => b - a) },
-      );
+      set((s) => ({
+        years: s.years.includes(year) ? s.years : [...s.years, year].sort((a, b) => b - a),
+        // Stamp (un-tombstone) the year so adding — including re-adding a deleted year — syncs and wins by recency.
+        yearMeta: { ...s.yearMeta, [year]: { updatedAt: nowIso(), deleted: false } },
+      }));
       persist();
     },
 
@@ -149,7 +165,12 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
             );
           }
         }
-        return { years: s.years.filter((y) => y !== year), records };
+        return {
+          years: s.years.filter((y) => y !== year),
+          records,
+          // Year-level tombstone: keeps the year itself deleted through the merge (not just its rows).
+          yearMeta: { ...s.yearMeta, [year]: { updatedAt: ts, deleted: true } },
+        };
       });
       persist();
     },

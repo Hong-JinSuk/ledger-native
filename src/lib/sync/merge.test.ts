@@ -98,4 +98,38 @@ describe('mergeLedger', () => {
     expect(merged.years).toEqual([2026, 2025]);
     expect(merged.settings.monthlyBudgets).toEqual({ '2026-07': 100, '2026-08': 1, '2025-01': 50 });
   });
+
+  it('a deleted year stays deleted instead of being unioned back from remote', () => {
+    const ts = '2026-06-01T00:00:00.000Z';
+    // Local deleted 2025: removed from years, its row tombstoned, year tombstone recorded.
+    const local = base({
+      years: [2026],
+      yearMeta: { '2025': { updatedAt: ts, deleted: true } },
+      records: { '2025-01': [mk({ id: 'a', year: 2025, month: 1, deleted: true, updatedAt: ts })] },
+    });
+    // Remote still has 2025 present with an older, active row.
+    const remote = base({
+      years: [2026, 2025],
+      records: { '2025-01': [mk({ id: 'a', year: 2025, month: 1, updatedAt: '2026-01-01' })] },
+    });
+    const merged = mergeLedger(local, remote);
+    expect(merged.years).toEqual([2026]); // 2025 no longer reappears
+    expect(merged.records['2025-01']?.[0].deleted).toBe(true); // its row stays tombstoned
+  });
+
+  it('re-adding a deleted year (newer) brings it back', () => {
+    const local = base({ years: [2025], yearMeta: { '2025': { updatedAt: '2026-06-02', deleted: false } } });
+    const remote = base({ years: [], yearMeta: { '2025': { updatedAt: '2026-06-01', deleted: true } } });
+    expect(mergeLedger(local, remote).years).toEqual([2025]);
+  });
+
+  it('keeps a year that still has active data even if a stale tombstone says deleted', () => {
+    const local = base({
+      years: [],
+      yearMeta: { '2025': { updatedAt: '2026-01-01', deleted: true } },
+      records: { '2025-03': [mk({ id: 'b', year: 2025, month: 3, updatedAt: '2026-05-01' })] },
+    });
+    const remote = base({});
+    expect(mergeLedger(local, remote).years).toEqual([2025]); // active data wins over the tombstone
+  });
 });

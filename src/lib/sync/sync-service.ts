@@ -25,8 +25,8 @@ let inFlight: Promise<void> | null = null;
 
 /** The current in-memory ledger as a snapshot — the newest local work / source of truth. */
 function localSnapshot(): LedgerSnapshot {
-  const { years, records, categories, settings } = useLedgerStore.getState();
-  return { version: LEDGER_SNAPSHOT_VERSION, years, records, categories, settings };
+  const { years, yearMeta, records, categories, settings } = useLedgerStore.getState();
+  return { version: LEDGER_SNAPSHOT_VERSION, years, yearMeta, records, categories, settings };
 }
 
 async function run(): Promise<void> {
