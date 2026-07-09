@@ -13,7 +13,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ConfirmProvider } from '@/components/confirm-dialog';
 import { FONTS_TO_LOAD } from '@/constants/fonts';
 import { Palette } from '@/constants/palette';
-import { seedDevData } from '@/lib/dev/seed-dev-data';
 import { syncNow } from '@/lib/sync/sync-service';
 import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
@@ -31,9 +30,7 @@ export default function RootLayout() {
 
   // Load the on-device ledger snapshot on boot (local-first).
   useEffect(() => {
-    hydrate().then(() => {
-      if (__DEV__) seedDevData();
-    });
+    void hydrate();
   }, [hydrate]);
 
   // Wire up Supabase auth: read the persisted session, then subscribe (cleanup unsubscribes).
