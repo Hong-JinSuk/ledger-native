@@ -1,7 +1,6 @@
 import {
   BottomSheetBackdrop,
   BottomSheetModal,
-  BottomSheetTextInput,
   BottomSheetView,
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
@@ -9,6 +8,7 @@ import { Check } from 'lucide-react-native';
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import { SheetTextInput } from '@/components/sheet-text-input';
 import { Palette } from '@/constants/palette';
 import { currentMonthKey, monthKey } from '@/lib/date';
 import { formatAmount, parseAmount } from '@/lib/money';
@@ -86,7 +86,7 @@ export const BudgetDrawer = forwardRef<BudgetDrawerRef, Props>(function BudgetDr
         </Text>
 
         <View className="flex-row items-end justify-center gap-1">
-          <BottomSheetTextInput
+          <SheetTextInput
             value={amount ? formatAmount(parseAmount(amount)) : ''}
             onChangeText={(t) => setAmount(String(parseAmount(t)))}
             keyboardType="number-pad"

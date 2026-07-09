@@ -2,7 +2,6 @@ import {
   BottomSheetBackdrop,
   BottomSheetModal,
   BottomSheetScrollView,
-  BottomSheetTextInput,
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -12,6 +11,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useConfirm } from '@/components/confirm-dialog';
+import { SheetTextInput } from '@/components/sheet-text-input';
 import { Palette } from '@/constants/palette';
 import { newId } from '@/lib/id';
 import { formatAmount, parseAmount } from '@/lib/money';
@@ -124,7 +124,7 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
               control={control}
               name="amount"
               render={({ field }) => (
-                <BottomSheetTextInput
+                <SheetTextInput
                   value={field.value ? formatAmount(field.value) : ''}
                   onChangeText={(t) => field.onChange(parseAmount(t))}
                   keyboardType="number-pad"
@@ -143,7 +143,7 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
               control={control}
               name="title"
               render={({ field }) => (
-                <BottomSheetTextInput
+                <SheetTextInput
                   value={field.value}
                   onChangeText={field.onChange}
                   placeholder="예: 넷플릭스, 월세"
@@ -215,7 +215,7 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
               control={control}
               name="note"
               render={({ field }) => (
-                <BottomSheetTextInput
+                <SheetTextInput
                   value={field.value ?? ''}
                   onChangeText={field.onChange}
                   placeholder="메모를 남겨보세요"

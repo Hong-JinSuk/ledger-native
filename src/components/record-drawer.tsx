@@ -2,7 +2,6 @@ import {
   BottomSheetBackdrop,
   BottomSheetModal,
   BottomSheetScrollView,
-  BottomSheetTextInput,
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -13,6 +12,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { CategoryIcon } from '@/components/category-icon';
 import { useConfirm } from '@/components/confirm-dialog';
+import { SheetTextInput } from '@/components/sheet-text-input';
 import { Palette } from '@/constants/palette';
 import { daysInMonth } from '@/lib/date';
 import { formatAmount, parseAmount } from '@/lib/money';
@@ -151,7 +151,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
             control={control}
             name="amount"
             render={({ field }) => (
-              <BottomSheetTextInput
+              <SheetTextInput
                 value={field.value ? formatAmount(field.value) : ''}
                 onChangeText={(t) => field.onChange(parseAmount(t))}
                 keyboardType="number-pad"
@@ -232,7 +232,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
             control={control}
             name="merchant"
             render={({ field }) => (
-              <BottomSheetTextInput
+              <SheetTextInput
                 value={field.value ?? ''}
                 onChangeText={field.onChange}
                 placeholder="어디에 썼나요?"
@@ -272,7 +272,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
             control={control}
             name="note"
             render={({ field }) => (
-              <BottomSheetTextInput
+              <SheetTextInput
                 value={field.value ?? ''}
                 onChangeText={field.onChange}
                 placeholder="메모를 남겨보세요"

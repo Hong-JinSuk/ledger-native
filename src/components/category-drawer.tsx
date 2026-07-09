@@ -2,7 +2,6 @@ import {
   BottomSheetBackdrop,
   BottomSheetModal,
   BottomSheetScrollView,
-  BottomSheetTextInput,
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -13,6 +12,7 @@ import { Pressable, Text, View } from 'react-native';
 
 import { CategoryIcon } from '@/components/category-icon';
 import { useConfirm } from '@/components/confirm-dialog';
+import { SheetTextInput } from '@/components/sheet-text-input';
 import { PICKABLE_ICONS } from '@/constants/icons';
 import { Palette } from '@/constants/palette';
 import { categoryFormSchema, type CategoryFormValues } from '@/schemas/category';
@@ -124,7 +124,7 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
             control={control}
             name="name"
             render={({ field }) => (
-              <BottomSheetTextInput
+              <SheetTextInput
                 value={field.value}
                 onChangeText={field.onChange}
                 placeholder="예: 식비, 급여"
@@ -220,7 +220,7 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
                     </View>
                   )}
                   <View className="flex-row items-center gap-2">
-                    <BottomSheetTextInput
+                    <SheetTextInput
                       value={subInput}
                       onChangeText={setSubInput}
                       onSubmitEditing={addSub}
