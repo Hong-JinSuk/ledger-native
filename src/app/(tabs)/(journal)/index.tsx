@@ -13,6 +13,7 @@ import { Palette } from '@/constants/palette';
 import { useClickOutside } from '@/hooks/use-click-outside';
 import { yearRemainingBudget, yearSummary } from '@/lib/ledger/selectors';
 import { formatCurrency } from '@/lib/money';
+import { syncOnEditEnd } from '@/lib/sync/sync-service';
 import { useLedgerStore } from '@/store/ledger-store';
 
 export default function YearView() {
@@ -40,7 +41,10 @@ export default function YearView() {
 
   const handleAddYear = () => {
     const y = parseInt(newYear, 10);
-    if (!Number.isNaN(y) && y > 1900 && y < 2100) addYear(y);
+    if (!Number.isNaN(y) && y > 1900 && y < 2100) {
+      addYear(y);
+      syncOnEditEnd(); // write-end: push the new year up promptly
+    }
     setNewYear('');
     setIsAdding(false);
   };
@@ -50,7 +54,10 @@ export default function YearView() {
       title: `${year}년을 삭제할까요?`,
       message: '그 해에 기록한 내역이 모두 사라져요.',
     });
-    if (ok) deleteYear(year);
+    if (ok) {
+      deleteYear(year);
+      syncOnEditEnd(); // write-end: propagate the deletion (tombstone) to Drive right away
+    }
   };
 
   return (

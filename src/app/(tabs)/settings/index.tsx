@@ -11,7 +11,7 @@ import { Screen } from '@/components/screen';
 import { Palette } from '@/constants/palette';
 import { signOut } from '@/lib/auth/auth';
 import { formatAmount, formatCurrency, parseAmount } from '@/lib/money';
-import { syncNow } from '@/lib/sync/sync-service';
+import { syncNow, syncOnEditEnd } from '@/lib/sync/sync-service';
 import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
 import { useSyncStore } from '@/store/sync-store';
@@ -44,7 +44,10 @@ export default function SettingsView() {
   const openAdd = () => drawerRef.current?.present();
   const openEdit = (expense: FixedExpense) => drawerRef.current?.present(expense);
 
-  const commitBudget = () => updateSettings({ budget: parseAmount(budgetText) });
+  const commitBudget = () => {
+    updateSettings({ budget: parseAmount(budgetText) });
+    syncOnEditEnd(); // write-end: default-budget field done → push if changed
+  };
 
   const handleSignOut = async () => {
     const ok = await confirm({

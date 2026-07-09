@@ -19,6 +19,12 @@ const MULTIPART_BOUNDARY = 'ledger_sync_multipart_boundary';
 /** The app's single data file in the user's Drive. */
 export const LEDGER_FILE_NAME = 'ledger.json';
 
+/** Drive file identity + last-content-change time (RFC 3339). `modifiedTime` gates redundant reads. */
+export interface DriveFileMeta {
+  id: string;
+  modifiedTime: string;
+}
+
 /** Thrown when Drive rejects the token (401/403). This is the seam for Phase 6b token refresh. */
 export class DriveAuthError extends Error {
   constructor(message = '구글 드라이브 접근 권한이 만료됐어요. 다시 로그인해주세요.') {
@@ -60,14 +66,18 @@ async function driveFetch(url: string, init?: RequestInit, retried = false): Pro
   return res;
 }
 
-/** Find the ledger file's id, or null if the app hasn't created it yet. */
-export async function findLedgerFileId(): Promise<string | null> {
+/**
+ * Look up the ledger file's id + modifiedTime, or null if the app hasn't created it yet. This is a
+ * cheap metadata-only call (no download) — the sync engine uses `modifiedTime` to decide whether the
+ * remote actually changed before pulling the whole file.
+ */
+export async function statLedgerFile(): Promise<DriveFileMeta | null> {
   const q = encodeURIComponent(`name = '${LEDGER_FILE_NAME}' and trashed = false`);
   const res = await driveFetch(
     `${DRIVE_FILES}?q=${q}&spaces=drive&fields=files(id,modifiedTime)&orderBy=modifiedTime desc`,
   );
-  const json = (await res.json()) as { files?: { id: string }[] };
-  return json.files?.[0]?.id ?? null;
+  const json = (await res.json()) as { files?: DriveFileMeta[] };
+  return json.files?.[0] ?? null;
 }
 
 /** Read + parse the ledger snapshot from a Drive file (null if the remote JSON is corrupt). */
@@ -82,8 +92,8 @@ export async function readLedgerFile(fileId: string): Promise<LedgerSnapshot | n
   }
 }
 
-/** Create the ledger file (multipart: metadata + JSON body). Returns the new file id. */
-export async function createLedgerFile(snapshot: LedgerSnapshot): Promise<string> {
+/** Create the ledger file (multipart: metadata + JSON body). Returns its id + modifiedTime. */
+export async function createLedgerFile(snapshot: LedgerSnapshot): Promise<DriveFileMeta> {
   const body =
     `--${MULTIPART_BOUNDARY}\r\n` +
     'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
@@ -93,24 +103,28 @@ export async function createLedgerFile(snapshot: LedgerSnapshot): Promise<string
     `${JSON.stringify(snapshot)}\r\n` +
     `--${MULTIPART_BOUNDARY}--`;
 
-  const res = await driveFetch(`${DRIVE_UPLOAD}?uploadType=multipart&fields=id`, {
+  const res = await driveFetch(`${DRIVE_UPLOAD}?uploadType=multipart&fields=id,modifiedTime`, {
     method: 'POST',
     headers: { 'Content-Type': `multipart/related; boundary=${MULTIPART_BOUNDARY}` },
     body,
   });
-  const json = (await res.json()) as { id: string };
-  return json.id;
+  return (await res.json()) as DriveFileMeta;
 }
 
 /**
  * Overwrite a Drive file's content with the snapshot. A single media PATCH replaces the whole
  * object in one request, so there's no partial-write window (Drive handles the atomicity of the
- * object swap) — no temp-file dance needed.
+ * object swap) — no temp-file dance needed. Returns the file's new modifiedTime so the sync engine
+ * can record "this is the remote state now" and skip re-downloading its own write.
  */
-export async function writeLedgerFile(fileId: string, snapshot: LedgerSnapshot): Promise<void> {
-  await driveFetch(`${DRIVE_UPLOAD}/${fileId}?uploadType=media`, {
+export async function writeLedgerFile(
+  fileId: string,
+  snapshot: LedgerSnapshot,
+): Promise<DriveFileMeta> {
+  const res = await driveFetch(`${DRIVE_UPLOAD}/${fileId}?uploadType=media&fields=id,modifiedTime`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(snapshot),
   });
+  return (await res.json()) as DriveFileMeta;
 }

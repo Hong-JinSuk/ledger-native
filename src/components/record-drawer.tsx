@@ -16,6 +16,7 @@ import { SheetTextInput } from '@/components/sheet-text-input';
 import { Palette } from '@/constants/palette';
 import { daysInMonth } from '@/lib/date';
 import { formatAmount, parseAmount } from '@/lib/money';
+import { syncOnEditEnd } from '@/lib/sync/sync-service';
 import { transactionFormSchema, type TransactionFormValues } from '@/schemas/transaction';
 import { useLedgerStore } from '@/store/ledger-store';
 import type { Transaction, TransactionType } from '@/types/ledger';
@@ -144,7 +145,10 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
       backdropComponent={renderBackdrop}
       backgroundStyle={{ backgroundColor: Palette.paper }}
       handleIndicatorStyle={{ backgroundColor: Palette.line }}
-      onDismiss={onClose}>
+      onDismiss={() => {
+        onClose?.();
+        syncOnEditEnd(); // write-end: push this edit to Drive (no-op if nothing changed)
+      }}>
       <BottomSheetScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
         <Text className="mb-6 text-2xl text-ink font-serif">
           {isEdit ? '기록 수정' : '새 기록'}

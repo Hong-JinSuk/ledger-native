@@ -12,6 +12,7 @@ import { SheetTextInput } from '@/components/sheet-text-input';
 import { Palette } from '@/constants/palette';
 import { currentMonthKey, monthKey } from '@/lib/date';
 import { formatAmount, parseAmount } from '@/lib/money';
+import { syncOnEditEnd } from '@/lib/sync/sync-service';
 import { useLedgerStore } from '@/store/ledger-store';
 
 export type BudgetDrawerRef = { present: () => void; dismiss: () => void };
@@ -76,7 +77,10 @@ export const BudgetDrawer = forwardRef<BudgetDrawerRef, Props>(function BudgetDr
       backdropComponent={renderBackdrop}
       backgroundStyle={{ backgroundColor: Palette.paper }}
       handleIndicatorStyle={{ backgroundColor: Palette.line }}
-      onDismiss={onClose}>
+      onDismiss={() => {
+        onClose?.();
+        syncOnEditEnd(); // write-end: push this edit to Drive (no-op if nothing changed)
+      }}>
       <BottomSheetView style={{ paddingHorizontal: 20, paddingBottom: 32 }}>
         <Text className="mb-1 text-2xl text-ink font-serif">
           {month}월 예산
