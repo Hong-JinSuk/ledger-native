@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS, LEDGER_SNAPSHOT_VERSION } from '@/constants/ledger';
 import { monthKey } from '@/lib/date';
 import { newId, nowIso } from '@/lib/id';
 import { asyncStorageLedger, type LedgerStorage } from '@/lib/storage/ledger-storage';
+import { mergeLedger } from '@/lib/sync/merge';
 import type {
   CategoryItem,
   LedgerSnapshot,
@@ -54,6 +55,8 @@ export interface LedgerState {
   settings: Settings;
 
   hydrate: () => Promise<void>;
+  /** Merge a Drive snapshot into local state (re-merged against current edits, so nothing is clobbered). */
+  applySyncedSnapshot: (incoming: LedgerSnapshot) => void;
 
   addYear: (year: number) => void;
   deleteYear: (year: number) => void;
@@ -103,6 +106,28 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
         set({ hydrated: true });
         persist();
       }
+    },
+
+    applySyncedSnapshot: (incoming) => {
+      set((s) => {
+        const current: LedgerSnapshot = {
+          version: LEDGER_SNAPSHOT_VERSION,
+          years: s.years,
+          records: s.records,
+          categories: s.categories,
+          settings: s.settings,
+        };
+        // Re-merge here (not a blind overwrite): if the user edited during the async pull, those
+        // current values win, so an in-flight sync can never clobber fresh local work.
+        const merged = mergeLedger(current, incoming);
+        return {
+          years: merged.years,
+          records: merged.records,
+          categories: merged.categories,
+          settings: merged.settings,
+        };
+      });
+      persist();
     },
 
     addYear: (year) => {

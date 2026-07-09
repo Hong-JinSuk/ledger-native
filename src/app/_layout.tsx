@@ -1,6 +1,7 @@
 import '../global.css';
 
 import { useEffect } from 'react';
+import { AppState } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -13,6 +14,7 @@ import { ConfirmProvider } from '@/components/confirm-dialog';
 import { FONTS_TO_LOAD } from '@/constants/fonts';
 import { Palette } from '@/constants/palette';
 import { seedDevData } from '@/lib/dev/seed-dev-data';
+import { syncNow } from '@/lib/sync/sync-service';
 import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
 
@@ -44,6 +46,17 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [ready]);
+
+  // Google Drive sync (Phase 6): once ready + logged in, sync on start and whenever the app returns
+  // to the foreground. syncNow coalesces concurrent calls; failures never touch local data.
+  useEffect(() => {
+    if (!ready || !session) return;
+    void syncNow();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void syncNow();
+    });
+    return () => sub.remove();
+  }, [ready, session]);
 
   if (!ready) {
     return null;

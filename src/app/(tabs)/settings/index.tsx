@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
-import { ChevronRight, Layers, LogOut, Plus, User } from 'lucide-react-native';
+import { ChevronRight, Layers, LogOut, Plus, RefreshCw, User } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { AppHeader } from '@/components/app-header';
 import { useConfirm } from '@/components/confirm-dialog';
@@ -11,8 +11,10 @@ import { Screen } from '@/components/screen';
 import { Palette } from '@/constants/palette';
 import { signOut } from '@/lib/auth/auth';
 import { formatAmount, formatCurrency, parseAmount } from '@/lib/money';
+import { syncNow } from '@/lib/sync/sync-service';
 import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
+import { useSyncStore } from '@/store/sync-store';
 import type { FixedExpense } from '@/types/ledger';
 
 export default function SettingsView() {
@@ -25,6 +27,9 @@ export default function SettingsView() {
   const updateSettings = useLedgerStore((s) => s.updateSettings);
 
   const session = useAuthStore((s) => s.session);
+  const syncStatus = useSyncStore((s) => s.status);
+  const syncError = useSyncStore((s) => s.error);
+  const syncing = syncStatus === 'syncing';
   const confirm = useConfirm();
 
   const categoryCount = categories.filter((c) => !c.deleted).length;
@@ -57,6 +62,15 @@ export default function SettingsView() {
     });
     if (ok) await signOut();
   };
+
+  const syncSubtitle =
+    syncStatus === 'error'
+      ? (syncError ?? '동기화에 실패했어요.')
+      : syncStatus === 'syncing'
+        ? '기록을 동기화하고 있어요…'
+        : syncStatus === 'synced'
+          ? '기록이 Drive에 안전하게 보관됐어요.'
+          : '앱을 켜면 자동으로 동기화돼요.';
 
   return (
     <Screen>
@@ -157,6 +171,34 @@ export default function SettingsView() {
                 <Text className="mt-0.5 text-xs text-muted font-sans">Google 계정으로 로그인</Text>
               </View>
             </View>
+
+            {/* Google Drive sync status + manual trigger (the ledger data lives in the user's Drive). */}
+            <View className="mt-4 flex-row items-center justify-between border-t border-line pt-4">
+              <View className="flex-1 pr-3">
+                <Text className="text-[13px] text-ink font-sans-medium">Google Drive 동기화</Text>
+                <Text
+                  numberOfLines={2}
+                  className={`mt-0.5 text-xs font-sans ${syncStatus === 'error' ? 'text-expense' : 'text-muted'}`}>
+                  {syncSubtitle}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => void syncNow()}
+                disabled={syncing}
+                hitSlop={8}
+                style={{ opacity: syncing ? 0.6 : 1 }}
+                className="flex-row items-center gap-1.5 rounded-full bg-fill px-3.5 py-2 active:opacity-70">
+                {syncing ? (
+                  <ActivityIndicator size="small" color={Palette.ink} />
+                ) : (
+                  <RefreshCw size={13} color={Palette.ink} />
+                )}
+                <Text className="text-[11px] uppercase tracking-wider text-ink font-sans-bold">
+                  {syncing ? '동기화 중' : '지금 동기화'}
+                </Text>
+              </Pressable>
+            </View>
+
             <Pressable
               onPress={handleSignOut}
               className="mt-4 flex-row items-center justify-center gap-2 rounded-full bg-fill py-3 active:opacity-70">
