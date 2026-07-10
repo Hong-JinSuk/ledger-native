@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { AmountStat } from '@/components/amount-stat';
 import { AppHeader } from '@/components/app-header';
@@ -8,6 +8,7 @@ import { BackLink } from '@/components/back-link';
 import { FadeIn } from '@/components/fade-in';
 import { HoverReveal } from '@/components/hover-reveal';
 import { Screen } from '@/components/screen';
+import { useIsWideScreen } from '@/hooks/use-responsive';
 import { monthKey } from '@/lib/date';
 import { activeRows, monthRemainingBudget, monthSummary, yearSummary } from '@/lib/ledger/selectors';
 import { formatAmount } from '@/lib/money';
@@ -24,12 +25,12 @@ export default function MonthView() {
   const records = useLedgerStore((s) => s.records);
   const settings = useLedgerStore((s) => s.settings);
   const totals = yearSummary(records, y);
-  const isWeb = Platform.OS === 'web';
+  const isWide = useIsWideScreen();
 
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 64 }}>
-        {isWeb ? (
+        {isWide ? (
           <View>
             <AppHeader title={`${y} Ledger`} subtitle="연간 요약 및 월별 상세" size="md" />
             {/* "< YEARS" (left) and the year totals (right) sit on the SAME row. */}
@@ -57,11 +58,11 @@ export default function MonthView() {
         )}
 
         {/* Full-width hairline under the header + "< YEARS" (web only). */}
-        {isWeb ? <View className="mb-6 mt-5 h-px bg-line" /> : null}
+        {isWide ? <View className="mb-6 mt-5 h-px bg-line" /> : null}
 
         {/* Same rich card on both platforms — only the grid density differs: web 4-up (grows to
             fill the full width, aligning with the header totals), native 2-up for the narrow phone. */}
-        <View className={isWeb ? 'flex-row flex-wrap gap-3.5' : 'flex-row flex-wrap justify-between gap-y-3'}>
+        <View className={isWide ? 'flex-row flex-wrap gap-3.5' : 'flex-row flex-wrap justify-between gap-y-3'}>
           {MONTH_ABBR.map((abbr, i) => {
             const month = i + 1;
             const rows = records[monthKey(y, month)];
@@ -75,7 +76,7 @@ export default function MonthView() {
             return (
               <FadeIn
                 key={month}
-                style={isWeb ? { flexGrow: 1, flexBasis: '22%' } : { width: '48%' }}
+                style={isWide ? { flexGrow: 1, flexBasis: '22%' } : { width: '48%' }}
                 delay={i * 30}>
                 <MonthCard
                   abbr={abbr}

@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { ChevronRight, Plus, Trash2 } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { AmountStat } from '@/components/amount-stat';
 import { AppHeader } from '@/components/app-header';
@@ -11,6 +11,7 @@ import { HoverReveal } from '@/components/hover-reveal';
 import { Screen } from '@/components/screen';
 import { Palette } from '@/constants/palette';
 import { useClickOutside } from '@/hooks/use-click-outside';
+import { useIsWideScreen } from '@/hooks/use-responsive';
 import { yearRemainingBudget, yearSummary } from '@/lib/ledger/selectors';
 import { formatCurrency } from '@/lib/money';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
@@ -24,7 +25,7 @@ export default function YearView() {
   const addYear = useLedgerStore((s) => s.addYear);
   const deleteYear = useLedgerStore((s) => s.deleteYear);
   const confirm = useConfirm();
-  const isWeb = Platform.OS === 'web';
+  const isWide = useIsWideScreen();
 
   const [isAdding, setIsAdding] = useState(false);
   const [newYear, setNewYear] = useState('');
@@ -105,13 +106,13 @@ export default function YearView() {
             아직 연도가 없어요.{'\n'}위에서 기록할 연도를 더해보세요.
           </Text>
         ) : (
-          <View className={isWeb ? 'flex-row flex-wrap gap-4' : 'gap-4'}>
+          <View className={isWide ? 'flex-row flex-wrap gap-4' : 'gap-4'}>
             {years.map((year, i) => {
               const summary = yearSummary(records, year);
               const remaining = yearRemainingBudget(records, settings, year);
               return (
-                <FadeIn key={year} delay={i * 70} style={isWeb ? { width: '31.5%' } : undefined}>
-                  {isWeb ? (
+                <FadeIn key={year} delay={i * 70} style={isWide ? { width: '31.5%' } : undefined}>
+                  {isWide ? (
                     <WebYearCard
                       year={year}
                       income={summary.income}
