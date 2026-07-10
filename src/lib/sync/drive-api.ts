@@ -72,10 +72,17 @@ async function driveFetch(url: string, init?: RequestInit, retried = false): Pro
  * remote actually changed before pulling the whole file.
  */
 export async function statLedgerFile(): Promise<DriveFileMeta | null> {
-  const q = encodeURIComponent(`name = '${LEDGER_FILE_NAME}' and trashed = false`);
-  const res = await driveFetch(
-    `${DRIVE_FILES}?q=${q}&spaces=drive&fields=files(id,modifiedTime)&orderBy=modifiedTime desc`,
-  );
+  // Percent-encode EVERY value. Browsers auto-encode URL spaces; React Native's fetch does not, so a
+  // raw space (e.g. `orderBy=modifiedTime desc`) reaches Drive malformed and it answers 400.
+  const query = ([
+    ['q', `name = '${LEDGER_FILE_NAME}' and trashed = false`],
+    ['spaces', 'drive'],
+    ['fields', 'files(id,modifiedTime)'],
+    ['orderBy', 'modifiedTime desc'],
+  ] as [string, string][])
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join('&');
+  const res = await driveFetch(`${DRIVE_FILES}?${query}`);
   const json = (await res.json()) as { files?: DriveFileMeta[] };
   return json.files?.[0] ?? null;
 }
