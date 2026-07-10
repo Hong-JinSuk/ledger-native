@@ -39,11 +39,6 @@ export const redirectTo =
     ? makeRedirectUri({ scheme: 'myapp', path: 'auth/callback' })
     : 'myapp://auth/callback';
 
-if (__DEV__) {
-  // Dev-only: prints the exact redirect URL (also shown on the login screen).
-  console.log('[auth] redirectTo =', redirectTo);
-}
-
 /**
  * Kick off Google OAuth. On success the Supabase session lands via onAuthStateChange (which the
  * auth store listens to), so this resolves with no value — callers just await + catch errors.
