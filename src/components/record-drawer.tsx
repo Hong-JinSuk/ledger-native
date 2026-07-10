@@ -14,6 +14,7 @@ import { CategoryIcon } from '@/components/category-icon';
 import { useConfirm } from '@/components/confirm-dialog';
 import { SheetTextInput } from '@/components/sheet-text-input';
 import { Palette } from '@/constants/palette';
+import { monoAmountWidth } from '@/lib/amount-width';
 import { daysInMonth } from '@/lib/date';
 import { formatAmount, parseAmount } from '@/lib/money';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
@@ -166,7 +167,9 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
                 keyboardType="number-pad"
                 placeholder="0"
                 placeholderTextColor={Palette.line}
-                className="text-4xl text-ink font-mono-semibold"
+                // Size to content on web so the centered [number] 원 stays tight and never overflows.
+                style={monoAmountWidth(field.value ? formatAmount(field.value) : '', 36)}
+                className="text-center text-4xl text-ink font-mono-semibold"
               />
             )}
           />

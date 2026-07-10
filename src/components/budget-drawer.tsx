@@ -10,6 +10,7 @@ import { Pressable, Text, View } from 'react-native';
 
 import { SheetTextInput } from '@/components/sheet-text-input';
 import { Palette } from '@/constants/palette';
+import { monoAmountWidth } from '@/lib/amount-width';
 import { currentMonthKey, monthKey } from '@/lib/date';
 import { formatAmount, parseAmount } from '@/lib/money';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
@@ -96,7 +97,10 @@ export const BudgetDrawer = forwardRef<BudgetDrawerRef, Props>(function BudgetDr
             keyboardType="number-pad"
             placeholder="0"
             placeholderTextColor={Palette.line}
-            className="text-4xl text-ink font-mono-semibold"
+            // Size the field to its content on web so the centered [number] 원 stays tight and never
+            // overflows (RNW gives an unconstrained <input> a wide default). Native auto-sizes.
+            style={monoAmountWidth(amount ? formatAmount(parseAmount(amount)) : '', 36)}
+            className="text-center text-4xl text-ink font-mono-semibold"
           />
           <Text className="pb-1 text-xl text-muted font-serif">원</Text>
         </View>

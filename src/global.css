@@ -1,3 +1,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Web only: suppress the browser's default focus ring on text fields. The app's inputs carry their
+ * own styling (and several are borderless number heroes like the budget / amount fields), so the
+ * blue UA outline reads as off-brand — most obviously it boxed the full-width budget input. Native
+ * has no `input`/`textarea` elements, so this rule is a no-op there.
+ */
+input:focus,
+textarea:focus {
+  outline: none;
+}
