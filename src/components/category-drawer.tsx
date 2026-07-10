@@ -13,6 +13,7 @@ import { Pressable, Text, View } from 'react-native';
 import { CategoryIcon } from '@/components/category-icon';
 import { useConfirm } from '@/components/confirm-dialog';
 import { SheetTextInput } from '@/components/sheet-text-input';
+import { useToast } from '@/components/toast';
 import { PICKABLE_ICONS } from '@/constants/icons';
 import { Palette } from '@/constants/palette';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
@@ -54,6 +55,7 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
   const updateCategory = useLedgerStore((s) => s.updateCategory);
   const deleteCategory = useLedgerStore((s) => s.deleteCategory);
   const confirm = useConfirm();
+  const toast = useToast();
 
   const isEdit = category != null;
   const [subInput, setSubInput] = useState('');
@@ -81,9 +83,10 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
       } else {
         addCategory({ ...values, subcategories });
       }
+      toast(isEdit ? '수정했어요' : '저장했어요');
       sheetRef.current?.dismiss();
     },
-    [isEdit, category, updateCategory, addCategory],
+    [isEdit, category, updateCategory, addCategory, toast],
   );
 
   const onDelete = useCallback(async () => {

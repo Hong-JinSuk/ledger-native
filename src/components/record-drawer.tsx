@@ -13,6 +13,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { CategoryIcon } from '@/components/category-icon';
 import { useConfirm } from '@/components/confirm-dialog';
 import { SheetTextInput } from '@/components/sheet-text-input';
+import { useToast } from '@/components/toast';
 import { Palette } from '@/constants/palette';
 import { monoAmountWidth } from '@/lib/amount-width';
 import { daysInMonth } from '@/lib/date';
@@ -64,6 +65,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   const updateTransaction = useLedgerStore((s) => s.updateTransaction);
   const deleteTransaction = useLedgerStore((s) => s.deleteTransaction);
   const confirm = useConfirm();
+  const toast = useToast();
 
   const isEdit = transaction != null;
   const { control, handleSubmit, reset, watch, setValue } = useForm<TransactionFormValues>({
@@ -115,9 +117,10 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
           note: values.note,
         });
       }
+      toast(isEdit ? '수정했어요' : '기록했어요');
       sheetRef.current?.dismiss();
     },
-    [isEdit, transaction, updateTransaction, addTransaction, year, month],
+    [isEdit, transaction, updateTransaction, addTransaction, year, month, toast],
   );
 
   const onDelete = useCallback(async () => {

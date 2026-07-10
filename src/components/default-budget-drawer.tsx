@@ -8,6 +8,7 @@ import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from '
 import { Pressable, Text, View } from 'react-native';
 
 import { SheetTextInput } from '@/components/sheet-text-input';
+import { useToast } from '@/components/toast';
 import { Palette } from '@/constants/palette';
 import { monoAmountWidth } from '@/lib/amount-width';
 import { formatAmount, parseAmount } from '@/lib/money';
@@ -26,6 +27,7 @@ export const DefaultBudgetDrawer = forwardRef<DefaultBudgetDrawerRef>(
     const sheetRef = useRef<BottomSheetModal>(null);
     const [amount, setAmount] = useState('');
     const updateSettings = useLedgerStore((s) => s.updateSettings);
+    const toast = useToast();
 
     useImperativeHandle(ref, () => ({
       present: () => {
@@ -39,8 +41,9 @@ export const DefaultBudgetDrawer = forwardRef<DefaultBudgetDrawerRef>(
 
     const onSave = useCallback(() => {
       updateSettings({ budget: parseAmount(amount) });
+      toast('기본 예산을 저장했어요');
       sheetRef.current?.dismiss();
-    }, [amount, updateSettings]);
+    }, [amount, updateSettings, toast]);
 
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => (

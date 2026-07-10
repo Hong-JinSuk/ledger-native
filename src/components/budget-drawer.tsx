@@ -9,6 +9,7 @@ import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from '
 import { Pressable, Text, View } from 'react-native';
 
 import { SheetTextInput } from '@/components/sheet-text-input';
+import { useToast } from '@/components/toast';
 import { Palette } from '@/constants/palette';
 import { monoAmountWidth } from '@/lib/amount-width';
 import { currentMonthKey, monthKey } from '@/lib/date';
@@ -31,6 +32,7 @@ export const BudgetDrawer = forwardRef<BudgetDrawerRef, Props>(function BudgetDr
   const updateMonthlyBudget = useLedgerStore((s) => s.updateMonthlyBudget);
   const updateSettings = useLedgerStore((s) => s.updateSettings);
   const confirmBudget = useLedgerStore((s) => s.confirmBudget);
+  const toast = useToast();
 
   const monthK = monthKey(year, month);
   const isCurrentMonth = monthK === currentMonthKey();
@@ -52,8 +54,9 @@ export const BudgetDrawer = forwardRef<BudgetDrawerRef, Props>(function BudgetDr
     updateMonthlyBudget(year, month, value > 0 ? value : null);
     if (useDefault && value > 0) updateSettings({ budget: value });
     if (isCurrentMonth) confirmBudget(currentMonthKey());
+    toast('예산을 저장했어요');
     sheetRef.current?.dismiss();
-  }, [amount, useDefault, isCurrentMonth, year, month, updateMonthlyBudget, updateSettings, confirmBudget]);
+  }, [amount, useDefault, isCurrentMonth, year, month, updateMonthlyBudget, updateSettings, confirmBudget, toast]);
 
   const onSkip = useCallback(() => {
     // Mark the month confirmed so the first-entry prompt doesn't nag again.

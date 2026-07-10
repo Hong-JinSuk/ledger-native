@@ -10,7 +10,9 @@ import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { BootScreen } from '@/components/boot-screen';
 import { ConfirmProvider } from '@/components/confirm-dialog';
+import { ToastProvider } from '@/components/toast';
 import { FONTS_TO_LOAD } from '@/constants/fonts';
 import { Palette } from '@/constants/palette';
 import { syncNow } from '@/lib/sync/sync-service';
@@ -56,7 +58,9 @@ export default function RootLayout() {
   }, [ready, session]);
 
   if (!ready) {
-    return null;
+    // Paper-bg branded boot frame instead of a blank one. On native the OS splash covers this; on
+    // web (no splash) it replaces the white flash during font load + AsyncStorage hydration.
+    return <BootScreen />;
   }
 
   return (
@@ -64,23 +68,25 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <BottomSheetModalProvider>
           <ConfirmProvider>
-            <StatusBar style="dark" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: Palette.paper },
-              }}>
-              {/* Auth gate: logged in → the app; logged out → the login screen. Flipping `session`
-                  swaps which group is mounted, and expo-router redirects to the available one. */}
-              <Stack.Protected guard={!!session}>
-                <Stack.Screen name="(tabs)" />
-              </Stack.Protected>
-              <Stack.Protected guard={!session}>
-                <Stack.Screen name="login" />
-              </Stack.Protected>
-              {/* Web OAuth return target — reachable in both states (native never navigates here). */}
-              <Stack.Screen name="auth/callback" />
-            </Stack>
+            <ToastProvider>
+              <StatusBar style="dark" />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: Palette.paper },
+                }}>
+                {/* Auth gate: logged in → the app; logged out → the login screen. Flipping `session`
+                    swaps which group is mounted, and expo-router redirects to the available one. */}
+                <Stack.Protected guard={!!session}>
+                  <Stack.Screen name="(tabs)" />
+                </Stack.Protected>
+                <Stack.Protected guard={!session}>
+                  <Stack.Screen name="login" />
+                </Stack.Protected>
+                {/* Web OAuth return target — reachable in both states (native never navigates here). */}
+                <Stack.Screen name="auth/callback" />
+              </Stack>
+            </ToastProvider>
           </ConfirmProvider>
         </BottomSheetModalProvider>
       </SafeAreaProvider>

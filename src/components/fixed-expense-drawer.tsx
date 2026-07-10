@@ -12,6 +12,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useConfirm } from '@/components/confirm-dialog';
 import { SheetTextInput } from '@/components/sheet-text-input';
+import { useToast } from '@/components/toast';
 import { Palette } from '@/constants/palette';
 import { monoAmountWidth } from '@/lib/amount-width';
 import { newId } from '@/lib/id';
@@ -52,6 +53,7 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
     const types = useLedgerStore((s) => s.settings.fixedExpenseTypes);
     const updateSettings = useLedgerStore((s) => s.updateSettings);
     const confirm = useConfirm();
+    const toast = useToast();
 
     const { control, handleSubmit, reset } = useForm<FixedExpenseFormValues>({
       resolver: zodResolver(fixedExpenseFormSchema),
@@ -112,9 +114,10 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
           const created: FixedExpense = { id: newId(), ...values, note: values.note ?? '' };
           updateSettings({ fixedExpenses: [...current, created] });
         }
+        toast(isEdit ? '수정했어요' : '저장했어요');
         sheetRef.current?.dismiss();
       },
-      [isEdit, expense, updateSettings],
+      [isEdit, expense, updateSettings, toast],
     );
 
     const onDelete = useCallback(async () => {
