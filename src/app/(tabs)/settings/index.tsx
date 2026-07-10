@@ -1,17 +1,18 @@
 import { useRouter } from 'expo-router';
 import { ChevronRight, Layers, LogOut, Plus, RefreshCw, User } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useRef } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { AppHeader } from '@/components/app-header';
 import { useConfirm } from '@/components/confirm-dialog';
+import { DefaultBudgetDrawer, type DefaultBudgetDrawerRef } from '@/components/default-budget-drawer';
 import { FadeIn } from '@/components/fade-in';
 import { FixedExpenseDrawer, type FixedExpenseDrawerRef } from '@/components/fixed-expense-drawer';
 import { Screen } from '@/components/screen';
 import { Palette } from '@/constants/palette';
 import { signOut } from '@/lib/auth/auth';
-import { formatAmount, formatCurrency, parseAmount } from '@/lib/money';
-import { syncNow, syncOnEditEnd } from '@/lib/sync/sync-service';
+import { formatAmount, formatCurrency } from '@/lib/money';
+import { syncNow } from '@/lib/sync/sync-service';
 import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
 import { useSyncStore } from '@/store/sync-store';
@@ -24,7 +25,6 @@ export default function SettingsView() {
   const currency = useLedgerStore((s) => s.settings.currency);
   const fixedExpenses = useLedgerStore((s) => s.settings.fixedExpenses);
   const categories = useLedgerStore((s) => s.categories);
-  const updateSettings = useLedgerStore((s) => s.updateSettings);
 
   const session = useAuthStore((s) => s.session);
   const syncStatus = useSyncStore((s) => s.status);
@@ -34,20 +34,11 @@ export default function SettingsView() {
 
   const categoryCount = categories.filter((c) => !c.deleted).length;
 
-  // Default budget: local buffer, committed to the store on blur (mirrors BudgetDrawer).
-  const [budgetText, setBudgetText] = useState(settingsBudget ? String(settingsBudget) : '');
-  useEffect(() => {
-    setBudgetText(settingsBudget ? String(settingsBudget) : '');
-  }, [settingsBudget]);
-
   const drawerRef = useRef<FixedExpenseDrawerRef>(null);
   const openAdd = () => drawerRef.current?.present();
   const openEdit = (expense: FixedExpense) => drawerRef.current?.present(expense);
 
-  const commitBudget = () => {
-    updateSettings({ budget: parseAmount(budgetText) });
-    syncOnEditEnd(); // write-end: default-budget field done → push if changed
-  };
+  const budgetDrawerRef = useRef<DefaultBudgetDrawerRef>(null);
 
   const handleSignOut = async () => {
     const ok = await confirm({
@@ -75,28 +66,20 @@ export default function SettingsView() {
         keyboardShouldPersistTaps="handled">
         <AppHeader title="Settings" subtitle="예산 · 카테고리 · 고정 지출" />
 
-        {/* Default budget */}
+        {/* Default budget — tap to edit in a sheet (matches every other edit in the app) */}
         <FadeIn>
           <SectionHeader title="기본 예산" />
-          <View className="rounded-2xl border border-line bg-white/60 px-5 py-4">
+          <Pressable
+            onPress={() => budgetDrawerRef.current?.present()}
+            className="rounded-2xl border border-line bg-white/60 px-5 py-4 active:opacity-70">
             <Text className="text-sm text-muted font-sans">매달 기본으로 적용될 예산</Text>
             <View className="mt-2 flex-row items-end justify-end gap-1">
-              <TextInput
-                value={budgetText ? formatAmount(parseAmount(budgetText)) : ''}
-                onChangeText={(t) => {
-                  const n = parseAmount(t);
-                  setBudgetText(n ? String(n) : '');
-                }}
-                onEndEditing={commitBudget}
-                onBlur={commitBudget}
-                keyboardType="number-pad"
-                placeholder="0"
-                placeholderTextColor={Palette.line}
-                className="text-3xl text-ink font-mono-semibold"
-              />
+              <Text className="text-3xl text-ink font-mono-semibold">
+                {formatAmount(settingsBudget)}
+              </Text>
               <Text className="pb-1 text-lg text-muted font-serif">원</Text>
             </View>
-          </View>
+          </Pressable>
         </FadeIn>
 
         {/* Categories */}
@@ -206,6 +189,7 @@ export default function SettingsView() {
       </ScrollView>
 
       <FixedExpenseDrawer ref={drawerRef} />
+      <DefaultBudgetDrawer ref={budgetDrawerRef} />
     </Screen>
   );
 }
