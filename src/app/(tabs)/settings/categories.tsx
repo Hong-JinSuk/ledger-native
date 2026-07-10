@@ -37,12 +37,14 @@ export default function CategoryManager() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 96 }}>
         <BackLink label="Settings" />
 
-        <View className="mb-6 mt-4">
-          <Text className="text-3xl text-ink font-serif">카테고리</Text>
-          <Text className="mt-2 text-[10px] uppercase tracking-[3px] text-muted font-sans-semibold">
-            분류를 더하고 다듬어요
-          </Text>
-        </View>
+        <FadeIn>
+          <View className="mb-6 mt-4">
+            <Text className="text-3xl text-ink font-serif">카테고리</Text>
+            <Text className="mt-2 text-[10px] uppercase tracking-[3px] text-muted font-sans-semibold">
+              분류를 더하고 다듬어요
+            </Text>
+          </View>
+        </FadeIn>
 
         {/* Type tabs */}
         <View className="mb-6 flex-row rounded-full bg-fill p-1">
@@ -63,8 +65,15 @@ export default function CategoryManager() {
 
         {/* Grid */}
         <FadeIn key={activeTab}>
-          <View className="flex-row flex-wrap">
-            {filtered.map((category) => (
+          {filtered.length === 0 ? (
+            <View className="items-center py-14">
+              <Text className="text-center text-sm leading-6 text-muted font-sans">
+                이 분류엔 아직 카테고리가 없어요.{'\n'}아래에서 새 카테고리를 더해보세요.
+              </Text>
+            </View>
+          ) : (
+            <View className="flex-row flex-wrap">
+              {filtered.map((category) => (
               <Pressable
                 key={category.id}
                 onPress={() => openEdit(category)}
@@ -84,8 +93,9 @@ export default function CategoryManager() {
                   </Text>
                 )}
               </Pressable>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
         </FadeIn>
 
         {/* Add */}

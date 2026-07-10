@@ -12,6 +12,7 @@ import { Screen } from '@/components/screen';
 import { Palette } from '@/constants/palette';
 import { useClickOutside } from '@/hooks/use-click-outside';
 import { useIsWideScreen } from '@/hooks/use-responsive';
+import { animateNextLayout } from '@/lib/animate-next-layout';
 import { yearRemainingBudget, yearSummary } from '@/lib/ledger/selectors';
 import { formatCurrency } from '@/lib/money';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
@@ -32,6 +33,7 @@ export default function YearView() {
   const addRowRef = useRef<View>(null);
 
   const cancelAdd = useCallback(() => {
+    animateNextLayout();
     setIsAdding(false);
     setNewYear('');
   }, []);
@@ -42,6 +44,7 @@ export default function YearView() {
 
   const handleAddYear = () => {
     const y = parseInt(newYear, 10);
+    animateNextLayout(); // soften the new card appearing + the input row collapsing
     if (!Number.isNaN(y) && y > 1900 && y < 2100) {
       addYear(y);
       syncOnEditEnd(); // write-end: push the new year up promptly
@@ -56,6 +59,7 @@ export default function YearView() {
       message: '그 해에 기록한 내역이 모두 사라져요.',
     });
     if (ok) {
+      animateNextLayout(); // gently collapse the removed year card
       deleteYear(year);
       syncOnEditEnd(); // write-end: propagate the deletion (tombstone) to Drive right away
     }
@@ -91,7 +95,10 @@ export default function YearView() {
           </View>
         ) : (
           <Pressable
-            onPress={() => setIsAdding(true)}
+            onPress={() => {
+              animateNextLayout();
+              setIsAdding(true);
+            }}
             hitSlop={6}
             className="mb-5 flex-row items-center gap-1.5 active:opacity-60">
             <Plus size={15} color={Palette.ink} />

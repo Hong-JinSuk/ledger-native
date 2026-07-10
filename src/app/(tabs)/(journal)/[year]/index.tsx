@@ -152,7 +152,7 @@ function MonthCard({
         </View>
       ) : (
         <View className="flex-1 items-center justify-center pt-2">
-          <Text className="text-sm text-muted font-sans">아직 기록이 없습니다</Text>
+          <Text className="text-sm text-muted font-sans">아직 기록이 없어요</Text>
         </View>
       )}
 
