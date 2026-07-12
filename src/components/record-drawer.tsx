@@ -1,9 +1,3 @@
-import {
-  BottomSheetBackdrop,
-  BottomSheetModal,
-  BottomSheetScrollView,
-  type BottomSheetBackdropProps,
-} from '@gorhom/bottom-sheet';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Trash2 } from 'lucide-react-native';
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
@@ -11,13 +5,14 @@ import { Controller, useForm } from 'react-hook-form';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { CategoryIcon } from '@/components/category-icon';
+import { AdaptiveSheet, type AdaptiveSheetRef } from '@/components/adaptive-sheet';
+import { AmountInput } from '@/components/amount-input';
 import { useConfirm } from '@/components/confirm-dialog';
 import { SheetTextInput } from '@/components/sheet-text-input';
 import { useToast } from '@/components/toast';
 import { Palette } from '@/constants/palette';
-import { monoAmountWidth } from '@/lib/amount-width';
+import { animateNextLayout } from '@/lib/animate-next-layout';
 import { daysInMonth } from '@/lib/date';
-import { formatAmount, parseAmount } from '@/lib/money';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
 import { transactionFormSchema, type TransactionFormValues } from '@/schemas/transaction';
 import { useLedgerStore } from '@/store/ledger-store';
@@ -55,7 +50,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   { year, month, onClose },
   ref,
 ) {
-  const sheetRef = useRef<BottomSheetModal>(null);
+  const sheetRef = useRef<AdaptiveSheetRef>(null);
   // The drawer owns "which row" (set at present time), so a fresh add always opens blank instead of
   // reusing the previous entry — decoupled from the parent's async state.
   const [transaction, setTransaction] = useState<Transaction | null>(null);
@@ -96,6 +91,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
 
   const onSubmit = useCallback(
     (values: TransactionFormValues) => {
+      animateNextLayout(); // gently settle the list when a row is added / its height changes
       if (isEdit && transaction) {
         updateTransaction(year, month, transaction.id, {
           type: values.type,
@@ -117,7 +113,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
           note: values.note,
         });
       }
-      toast(isEdit ? '수정했어요' : '기록했어요');
+      toast.success(isEdit ? '수정했어요' : '기록했어요');
       sheetRef.current?.dismiss();
     },
     [isEdit, transaction, updateTransaction, addTransaction, year, month, toast],
@@ -127,33 +123,20 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
     if (!transaction) return;
     const ok = await confirm({ title: '이 기록을 삭제할까요?', message: '삭제하면 되돌릴 수 없어요.' });
     if (!ok) return;
+    animateNextLayout(); // gently collapse the removed row
     deleteTransaction(year, month, transaction.id);
     sheetRef.current?.dismiss();
   }, [transaction, deleteTransaction, year, month, confirm]);
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.35} />
-    ),
-    [],
-  );
-
   return (
-    <BottomSheetModal
+    <AdaptiveSheet
       ref={sheetRef}
       snapPoints={['88%']}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      keyboardBehavior="interactive"
-      keyboardBlurBehavior="restore"
-      backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: Palette.paper }}
-      handleIndicatorStyle={{ backgroundColor: Palette.line }}
+      contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
       onDismiss={() => {
         onClose?.();
         syncOnEditEnd(); // write-end: push this edit to Drive (no-op if nothing changed)
       }}>
-      <BottomSheetScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
         <Text className="mb-6 text-2xl text-ink font-serif">
           {isEdit ? '기록 수정' : '새 기록'}
         </Text>
@@ -164,15 +147,10 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
             control={control}
             name="amount"
             render={({ field }) => (
-              <SheetTextInput
-                value={field.value ? formatAmount(field.value) : ''}
-                onChangeText={(t) => field.onChange(parseAmount(t))}
-                keyboardType="number-pad"
-                placeholder="0"
-                placeholderTextColor={Palette.line}
-                // Size to content on web so the centered [number] 원 stays tight and never overflows.
-                style={monoAmountWidth(field.value ? formatAmount(field.value) : '', 36)}
-                className="text-center text-4xl text-ink font-mono-semibold"
+              <AmountInput
+                value={field.value}
+                onChangeValue={field.onChange}
+                onSubmitEditing={handleSubmit(onSubmit)}
               />
             )}
           />
@@ -316,8 +294,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
             <Text className="text-sm text-expense font-sans-medium">삭제</Text>
           </Pressable>
         )}
-      </BottomSheetScrollView>
-    </BottomSheetModal>
+    </AdaptiveSheet>
   );
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { LedgerSnapshot, Transaction } from '@/types/ledger';
+import type { FixedExpense, LedgerSnapshot, Transaction } from '@/types/ledger';
 import { mergeById, mergeLedger, mergeRecords } from '@/lib/sync/merge';
 
 type Item = { id: string; updatedAt: string; deleted: boolean; v?: string };
@@ -131,5 +131,98 @@ describe('mergeLedger', () => {
     });
     const remote = base({});
     expect(mergeLedger(local, remote).years).toEqual([2025]); // active data wins over the tombstone
+  });
+
+  // Fixed expenses used to be overwritten wholesale (`{ ...local }`), so the other device's
+  // additions were dropped and then destroyed on the next push. They must merge by id like records.
+  const fe = (id: string, amount: number, over: Partial<FixedExpense> = {}): FixedExpense => ({
+    id,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    deleted: false,
+    type: '구독',
+    title: id,
+    amount,
+    date: null,
+    note: '',
+    ...over,
+  });
+  const withFixed = (over: LedgerSnapshot, list: FixedExpense[]): LedgerSnapshot => ({
+    ...over,
+    settings: { ...over.settings, fixedExpenses: list },
+  });
+
+  it('unions fixed expenses by id — a remote-only expense is kept, local wins a conflict', () => {
+    const local = withFixed(base({}), [fe('netflix', 3500)]);
+    const remote = withFixed(base({}), [fe('netflix', 4000), fe('claude', 80000)]);
+    const byId = Object.fromEntries(
+      mergeLedger(local, remote).settings.fixedExpenses.map((e) => [e.id, e]),
+    );
+    expect(Object.keys(byId).sort()).toEqual(['claude', 'netflix']); // remote-only survives (the bug)
+    expect(byId.claude.amount).toBe(80000);
+    expect(byId.netflix.amount).toBe(3500); // local wins the true conflict
+  });
+
+  it('syncs the default budget by recency (a bare scalar that local-wins would never sync in)', () => {
+    const withBudget = (over: LedgerSnapshot, budget: number, ts: string): LedgerSnapshot => ({
+      ...over,
+      settings: { ...over.settings, budget, budgetUpdatedAt: ts },
+    });
+    // Local never set it (old seed); remote set 1.2M more recently → remote's budget syncs in.
+    const local = withBudget(base({}), 0, '2024-01-01T00:00:00.000Z');
+    const remote = withBudget(base({}), 1_200_000, '2026-07-01T00:00:00.000Z');
+    expect(mergeLedger(local, remote).settings.budget).toBe(1_200_000);
+    // Reverse: local edited it most recently → local wins.
+    const localNewer = withBudget(base({}), 500_000, '2026-07-02T00:00:00.000Z');
+    expect(mergeLedger(localNewer, remote).settings.budget).toBe(500_000);
+  });
+
+  it('merges per-month snapshots by item id within each month (union; local wins same id)', () => {
+    const local = base({});
+    local.settings.monthlyFixedExpenses = {
+      '2026-07': [fe('shared', 3000), fe('local-only', 1000)],
+      '2026-06': [fe('jun', 500)],
+    };
+    const remote = base({});
+    remote.settings.monthlyFixedExpenses = {
+      '2026-07': [fe('shared', 9999), fe('remote-only', 2000)],
+      '2026-05': [fe('may', 700)],
+    };
+    const merged = mergeLedger(local, remote).settings.monthlyFixedExpenses ?? {};
+    expect(Object.keys(merged).sort()).toEqual(['2026-05', '2026-06', '2026-07']);
+    const jul = Object.fromEntries(merged['2026-07'].map((e) => [e.id, e.amount]));
+    expect(Object.keys(jul).sort()).toEqual(['local-only', 'remote-only', 'shared']); // items union across devices
+    expect(jul.shared).toBe(3000); // local wins the same-id conflict
+    expect(merged['2026-05'][0].id).toBe('may'); // remote-only month survives untouched
+  });
+
+  it('a soft-deleted month fixed expense stays deleted after merge (delete wins over a newer edit)', () => {
+    const local = base({});
+    local.settings.monthlyFixedExpenses = {
+      '2026-07': [fe('a', 1, { deleted: true, updatedAt: '2026-01-01' })],
+    };
+    const remote = base({});
+    remote.settings.monthlyFixedExpenses = {
+      '2026-07': [fe('a', 999, { deleted: false, updatedAt: '2026-05-01' })],
+    };
+    const merged = mergeLedger(local, remote).settings.monthlyFixedExpenses ?? {};
+    expect(merged['2026-07'][0].deleted).toBe(true);
+  });
+
+  it('a deleted fixed expense stays deleted (delete wins over a newer remote edit)', () => {
+    const local = withFixed(base({}), [fe('a', 1, { deleted: true, updatedAt: '2026-01-01' })]);
+    const remote = withFixed(base({}), [fe('a', 999, { deleted: false, updatedAt: '2026-05-01' })]);
+    expect(mergeLedger(local, remote).settings.fixedExpenses[0].deleted).toBe(true);
+  });
+
+  it('backfills sync meta on legacy fixed expenses missing it (no crash, treated as alive)', () => {
+    // Simulate a pre-SyncMeta expense (no createdAt/updatedAt/deleted) coming from an old file.
+    const legacy = { id: 'old', type: '구독', title: 'old', amount: 100, date: null, note: '' };
+    const local = withFixed(base({}), []);
+    const remote = withFixed(base({}), [legacy as FixedExpense]);
+    const merged = mergeLedger(local, remote).settings.fixedExpenses;
+    expect(merged).toHaveLength(1);
+    expect(merged[0].deleted).toBe(false);
+    expect(merged[0].updatedAt).toBeTruthy();
   });
 });

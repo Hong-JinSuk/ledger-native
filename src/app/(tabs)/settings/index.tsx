@@ -1,17 +1,20 @@
 import { useRouter } from 'expo-router';
 import { ChevronRight, Layers, LogOut, Plus, RefreshCw, User } from 'lucide-react-native';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { AppHeader } from '@/components/app-header';
 import { useConfirm } from '@/components/confirm-dialog';
 import { DefaultBudgetDrawer, type DefaultBudgetDrawerRef } from '@/components/default-budget-drawer';
+import { EmptyState } from '@/components/empty-state';
 import { FadeIn } from '@/components/fade-in';
+import { FixedExpenseCard } from '@/components/fixed-expense-card';
 import { FixedExpenseDrawer, type FixedExpenseDrawerRef } from '@/components/fixed-expense-drawer';
 import { Screen } from '@/components/screen';
+import { webScrollContent } from '@/constants/layout';
 import { Palette } from '@/constants/palette';
 import { signOut } from '@/lib/auth/auth';
-import { formatAmount, formatCurrency } from '@/lib/money';
+import { formatAmount } from '@/lib/money';
 import { syncNow } from '@/lib/sync/sync-service';
 import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
@@ -24,6 +27,14 @@ export default function SettingsView() {
   const settingsBudget = useLedgerStore((s) => s.settings.budget);
   const currency = useLedgerStore((s) => s.settings.currency);
   const fixedExpenses = useLedgerStore((s) => s.settings.fixedExpenses);
+  // Hide tombstoned (soft-deleted) expenses — they linger in the array so the deletion can sync.
+  const visibleFixedExpenses = useMemo(() => fixedExpenses.filter((e) => !e.deleted), [fixedExpenses]);
+  // Default budget with fixed expenses taken out — the "actually spendable" amount each month.
+  const fixedTotal = useMemo(
+    () => visibleFixedExpenses.reduce((sum, e) => sum + (e.amount || 0), 0),
+    [visibleFixedExpenses],
+  );
+  const budgetAfterFixed = settingsBudget - fixedTotal;
   const categories = useLedgerStore((s) => s.categories);
 
   const session = useAuthStore((s) => s.session);
@@ -60,12 +71,21 @@ export default function SettingsView() {
           : '앱을 켜면 자동으로 동기화돼요.';
 
   return (
-    <Screen>
-      <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 64 }}
-        keyboardShouldPersistTaps="handled">
-        <AppHeader title="Settings" subtitle="예산 · 카테고리 · 고정 지출" />
+    <Screen webFull>
+      {/* Fixed header — stays put like a page header; only the content below scrolls. */}
+      <View style={{ backgroundColor: Palette.paper }}>
+        <View style={[{ paddingHorizontal: 20, paddingTop: 16 }, webScrollContent]}>
+          <AppHeader title="Settings" subtitle="예산 · 카테고리 · 고정 지출" />
+        </View>
+      </View>
 
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[
+          { paddingHorizontal: 20, paddingBottom: 64 },
+          webScrollContent,
+        ]}
+        keyboardShouldPersistTaps="handled">
         {/* Default budget — tap to edit in a sheet (matches every other edit in the app) */}
         <FadeIn>
           <SectionHeader title="기본 예산" />
@@ -79,6 +99,15 @@ export default function SettingsView() {
               </Text>
               <Text className="pb-1 text-lg text-muted font-serif">원</Text>
             </View>
+            {settingsBudget > 0 && fixedTotal > 0 && (
+              <View className="mt-1.5 flex-row items-baseline justify-end gap-1.5">
+                <Text className="text-[11px] text-muted font-sans">고정 지출 빼면</Text>
+                <Text className="text-base text-muted font-mono-medium">
+                  {formatAmount(budgetAfterFixed)}
+                </Text>
+                <Text className="text-[11px] text-muted font-serif">원</Text>
+              </View>
+            )}
           </Pressable>
         </FadeIn>
 
@@ -115,15 +144,11 @@ export default function SettingsView() {
               </Pressable>
             }
           />
-          {fixedExpenses.length === 0 ? (
-            <View className="items-center rounded-2xl border border-line bg-white/60 px-5 py-8">
-              <Text className="text-center text-sm leading-6 text-muted font-sans">
-                아직 등록된 고정 지출이 없어요.{'\n'}매달 나가는 지출을 더해보세요.
-              </Text>
-            </View>
+          {visibleFixedExpenses.length === 0 ? (
+            <EmptyState message={'아직 등록된 고정 지출이 없어요.\n매달 나가는 지출을 더해보세요.'} />
           ) : (
             <View className="gap-2.5">
-              {fixedExpenses.map((expense) => (
+              {visibleFixedExpenses.map((expense) => (
                 <FixedExpenseCard
                   key={expense.id}
                   expense={expense}
@@ -203,31 +228,3 @@ function SectionHeader({ title, action }: { title: string; action?: React.ReactN
   );
 }
 
-function FixedExpenseCard({
-  expense,
-  currency,
-  onPress,
-}: {
-  expense: FixedExpense;
-  currency: string;
-  onPress: () => void;
-}) {
-  const schedule = expense.date != null ? `매월 ${expense.date}일` : '결제일 미정';
-  return (
-    <Pressable
-      onPress={onPress}
-      className="flex-row items-center rounded-2xl border border-line bg-white/60 px-5 py-4 active:opacity-70">
-      <View className="flex-1">
-        <Text className="text-[15px] text-ink font-sans-medium" numberOfLines={1}>
-          {expense.title || '이름 없음'}
-        </Text>
-        <Text className="mt-0.5 text-xs text-muted font-sans">
-          {expense.type} · {schedule}
-        </Text>
-      </View>
-      <Text className="text-[15px] text-expense font-mono-medium">
-        {formatCurrency(expense.amount, currency)}
-      </Text>
-    </Pressable>
-  );
-}

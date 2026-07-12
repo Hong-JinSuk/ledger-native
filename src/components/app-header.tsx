@@ -4,6 +4,7 @@ import { Animated, Text, View } from 'react-native';
 
 import { BackLink } from '@/components/back-link';
 import { FadeIn } from '@/components/fade-in';
+import { SyncIndicator } from '@/components/sync-indicator';
 
 const LETTER_STAGGER = 42; // ms between letters
 const LETTER_DURATION = 320;
@@ -48,6 +49,10 @@ export function AppHeader({
 
   return (
     <View className="mb-6" key={`${replay}-${title}-${subtitle}`}>
+      {/* Non-blocking sync chip, pinned top-right so it never shifts the title's letter reveal. */}
+      <View style={{ position: 'absolute', top: 2, right: 0, zIndex: 10 }}>
+        <SyncIndicator />
+      </View>
       <View className="flex-row flex-wrap">
         {title.split('').map((ch, i) => (
           <Letter key={`${i}-${ch}`} char={ch} delay={i * LETTER_STAGGER} textClass={titleClass} />

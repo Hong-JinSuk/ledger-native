@@ -45,3 +45,6 @@ example
 
 # local screenshot previews (not source)
 docs/_preview/
+
+# Supabase CLI local cache (project-ref link, etc.)
+supabase/.temp/

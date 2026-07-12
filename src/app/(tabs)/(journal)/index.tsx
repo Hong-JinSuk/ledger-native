@@ -6,6 +6,7 @@ import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { AmountStat } from '@/components/amount-stat';
 import { AppHeader } from '@/components/app-header';
 import { useConfirm } from '@/components/confirm-dialog';
+import { EmptyState } from '@/components/empty-state';
 import { FadeIn } from '@/components/fade-in';
 import { HoverReveal } from '@/components/hover-reveal';
 import { Screen } from '@/components/screen';
@@ -109,9 +110,9 @@ export default function YearView() {
         )}
 
         {years.length === 0 ? (
-          <Text className="mt-10 text-center text-sm leading-6 text-muted font-sans">
-            아직 연도가 없어요.{'\n'}위에서 기록할 연도를 더해보세요.
-          </Text>
+          <View className="mt-6">
+            <EmptyState message={'아직 연도가 없어요.\n위에서 기록할 연도를 더해보세요.'} />
+          </View>
         ) : (
           <View className={isWide ? 'flex-row flex-wrap gap-4' : 'gap-4'}>
             {years.map((year, i) => {

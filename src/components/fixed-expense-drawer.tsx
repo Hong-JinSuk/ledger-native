@@ -1,22 +1,16 @@
-import {
-  BottomSheetBackdrop,
-  BottomSheetModal,
-  BottomSheetScrollView,
-  type BottomSheetBackdropProps,
-} from '@gorhom/bottom-sheet';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Check, Plus, Trash2 } from 'lucide-react-native';
+import { Check, Plus, Trash2, X } from 'lucide-react-native';
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { AdaptiveSheet, type AdaptiveSheetRef } from '@/components/adaptive-sheet';
+import { AmountInput } from '@/components/amount-input';
 import { useConfirm } from '@/components/confirm-dialog';
 import { SheetTextInput } from '@/components/sheet-text-input';
 import { useToast } from '@/components/toast';
 import { Palette } from '@/constants/palette';
-import { monoAmountWidth } from '@/lib/amount-width';
-import { newId } from '@/lib/id';
-import { formatAmount, parseAmount } from '@/lib/money';
+import { animateNextLayout } from '@/lib/animate-next-layout';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
 import { fixedExpenseFormSchema, type FixedExpenseFormValues } from '@/schemas/fixed-expense';
 import { useLedgerStore } from '@/store/ledger-store';
@@ -28,7 +22,11 @@ export type FixedExpenseDrawerRef = {
   dismiss: () => void;
 };
 
-type Props = { onClose?: () => void };
+type Props = {
+  onClose?: () => void;
+  /** When set, add/edit/delete target that MONTH's frozen snapshot instead of the live template. */
+  month?: { year: number; month: number };
+};
 
 function toDefaults(expense: FixedExpense | null, types: string[]): FixedExpenseFormValues {
   if (!expense) {
@@ -44,14 +42,21 @@ function toDefaults(expense: FixedExpense | null, types: string[]): FixedExpense
 }
 
 export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
-  function FixedExpenseDrawer({ onClose }, ref) {
-    const sheetRef = useRef<BottomSheetModal>(null);
+  function FixedExpenseDrawer({ onClose, month }, ref) {
+    const sheetRef = useRef<AdaptiveSheetRef>(null);
     // The drawer owns "which expense" (set at present time) — decoupled from parent async state so a
     // fresh +추가 always opens blank instead of leaking the previous entry.
     const [expense, setExpense] = useState<FixedExpense | null>(null);
 
     const types = useLedgerStore((s) => s.settings.fixedExpenseTypes);
     const updateSettings = useLedgerStore((s) => s.updateSettings);
+    const addFixedExpense = useLedgerStore((s) => s.addFixedExpense);
+    const updateFixedExpense = useLedgerStore((s) => s.updateFixedExpense);
+    const deleteFixedExpense = useLedgerStore((s) => s.deleteFixedExpense);
+    // Month-scoped variants (used when `month` is set) — edit that month's snapshot, not the template.
+    const addMonthFixedExpense = useLedgerStore((s) => s.addMonthFixedExpense);
+    const updateMonthFixedExpense = useLedgerStore((s) => s.updateMonthFixedExpense);
+    const deleteMonthFixedExpense = useLedgerStore((s) => s.deleteMonthFixedExpense);
     const confirm = useConfirm();
     const toast = useToast();
 
@@ -103,21 +108,21 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
 
     const onSubmit = useCallback(
       (values: FixedExpenseFormValues) => {
-        // Read the freshest array so concurrent edits don't clobber each other.
-        const current = useLedgerStore.getState().settings.fixedExpenses;
+        animateNextLayout(); // gently settle the list when an item is added/removed
+        // Merged item-by-item (each carries sync meta), so an edit here can't clobber the other
+        // device's fixed expenses on the next Drive sync. Route to the month snapshot when scoped.
         if (isEdit && expense) {
-          const next = current.map((e) =>
-            e.id === expense.id ? { ...e, ...values, note: values.note ?? '' } : e,
-          );
-          updateSettings({ fixedExpenses: next });
+          if (month) updateMonthFixedExpense(month.year, month.month, expense.id, values);
+          else updateFixedExpense(expense.id, values);
+        } else if (month) {
+          addMonthFixedExpense(month.year, month.month, values);
         } else {
-          const created: FixedExpense = { id: newId(), ...values, note: values.note ?? '' };
-          updateSettings({ fixedExpenses: [...current, created] });
+          addFixedExpense(values);
         }
-        toast(isEdit ? '수정했어요' : '저장했어요');
+        toast.success(isEdit ? '수정했어요' : '저장했어요');
         sheetRef.current?.dismiss();
       },
-      [isEdit, expense, updateSettings, toast],
+      [isEdit, expense, month, addFixedExpense, updateFixedExpense, addMonthFixedExpense, updateMonthFixedExpense, toast],
     );
 
     const onDelete = useCallback(async () => {
@@ -127,34 +132,22 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
         message: '삭제하면 되돌릴 수 없어요.',
       });
       if (!ok) return;
-      const current = useLedgerStore.getState().settings.fixedExpenses;
-      updateSettings({ fixedExpenses: current.filter((e) => e.id !== expense.id) });
+      animateNextLayout();
+      // soft-delete: the tombstone survives the Drive merge
+      if (month) deleteMonthFixedExpense(month.year, month.month, expense.id);
+      else deleteFixedExpense(expense.id);
       sheetRef.current?.dismiss();
-    }, [expense, updateSettings, confirm]);
-
-    const renderBackdrop = useCallback(
-      (props: BottomSheetBackdropProps) => (
-        <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.35} />
-      ),
-      [],
-    );
+    }, [expense, month, deleteFixedExpense, deleteMonthFixedExpense, confirm]);
 
     return (
-      <BottomSheetModal
+      <AdaptiveSheet
         ref={sheetRef}
         snapPoints={['82%']}
-        enableDynamicSizing={false}
-        enablePanDownToClose
-        keyboardBehavior="interactive"
-        keyboardBlurBehavior="restore"
-        backdropComponent={renderBackdrop}
-        backgroundStyle={{ backgroundColor: Palette.paper }}
-        handleIndicatorStyle={{ backgroundColor: Palette.line }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
         onDismiss={() => {
           onClose?.();
           syncOnEditEnd(); // write-end: push this edit to Drive (no-op if nothing changed)
         }}>
-        <BottomSheetScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
           <Text className="mb-6 text-2xl text-ink font-serif">
             {isEdit ? '고정 지출 수정' : '새 고정 지출'}
           </Text>
@@ -165,15 +158,10 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
               control={control}
               name="amount"
               render={({ field }) => (
-                <SheetTextInput
-                  value={field.value ? formatAmount(field.value) : ''}
-                  onChangeText={(t) => field.onChange(parseAmount(t))}
-                  keyboardType="number-pad"
-                  placeholder="0"
-                  placeholderTextColor={Palette.line}
-                  // Size to content on web so the centered [number] 원 stays tight and never overflows.
-                  style={monoAmountWidth(field.value ? formatAmount(field.value) : '', 36)}
-                  className="text-center text-4xl text-ink font-mono-semibold"
+                <AmountInput
+                  value={field.value}
+                  onChangeValue={field.onChange}
+                  onSubmitEditing={handleSubmit(onSubmit)}
                 />
               )}
             />
@@ -209,17 +197,28 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
                       {types.map((t) => {
                         const active = field.value === t;
                         return (
-                          <Pressable
+                          <View
                             key={t}
-                            onPress={() => field.onChange(t)}
-                            onLongPress={() => deleteType(t)}
-                            delayLongPress={350}
-                            className={`rounded-full px-4 py-2.5 ${active ? 'bg-ink' : 'bg-fill'}`}>
-                            <Text
-                              className={`text-sm font-sans-semibold ${active ? 'text-paper' : 'text-muted'}`}>
-                              {t}
-                            </Text>
-                          </Pressable>
+                            className={`flex-row items-center rounded-full ${active ? 'bg-ink' : 'bg-fill'}`}>
+                            <Pressable
+                              onPress={() => field.onChange(t)}
+                              className="py-2.5 pl-4 pr-1.5 active:opacity-70">
+                              <Text
+                                className={`text-sm font-sans-semibold ${active ? 'text-paper' : 'text-muted'}`}>
+                                {t}
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={() => deleteType(t)}
+                              hitSlop={8}
+                              className="py-2.5 pl-0.5 pr-3 active:opacity-60">
+                              <X
+                                size={13}
+                                color={active ? Palette.paper : Palette.muted}
+                                strokeWidth={2.5}
+                              />
+                            </Pressable>
+                          </View>
                         );
                       })}
 
@@ -251,9 +250,6 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
                       )}
                     </View>
                   </ScrollView>
-                  <Text className="mt-2 text-[11px] text-muted font-sans">
-                    유형을 길게 누르면 삭제할 수 있어요.
-                  </Text>
                 </View>
               )}
             />
@@ -321,8 +317,7 @@ export const FixedExpenseDrawer = forwardRef<FixedExpenseDrawerRef, Props>(
               <Text className="text-sm text-expense font-sans-medium">삭제</Text>
             </Pressable>
           )}
-        </BottomSheetScrollView>
-      </BottomSheetModal>
+      </AdaptiveSheet>
     );
   },
 );

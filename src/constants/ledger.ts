@@ -18,10 +18,12 @@ export const DEFAULT_FIXED_EXPENSE_TYPES = ['통신비', '교통비', '주거비
 
 export const DEFAULT_SETTINGS: Settings = {
   budget: 0,
+  budgetUpdatedAt: SEED_TIMESTAMP,
   monthlyBudgets: {},
   currency: DEFAULT_CURRENCY,
   fixedExpenseTypes: [...DEFAULT_FIXED_EXPENSE_TYPES],
   fixedExpenses: [],
+  monthlyFixedExpenses: {},
   lastBudgetConfirmation: undefined,
   updatedAt: SEED_TIMESTAMP,
 };

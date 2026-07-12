@@ -1,4 +1,11 @@
-import type { CategoryItem, LedgerSnapshot, Settings, Transaction, YearMeta } from '@/types/ledger';
+import type {
+  CategoryItem,
+  FixedExpense,
+  LedgerSnapshot,
+  Settings,
+  Transaction,
+  YearMeta,
+} from '@/types/ledger';
 import { monthKey, parseMonthKey } from '@/lib/date';
 
 /**
@@ -57,11 +64,72 @@ export function mergeRecords(
   return out;
 }
 
+/** A time before any real edit — stamped on legacy fixed expenses that predate SyncMeta. */
+const FIXED_EXPENSE_EPOCH = '1970-01-01T00:00:00.000Z';
+
+/**
+ * Backfill sync meta on a fixed expense read from an older file/snapshot (before FixedExpense
+ * carried {@link SyncMeta}). Defaults make it "oldest & alive" so a real dated edit on the other
+ * side wins the tie and it's never mistaken for a tombstone. A no-op once meta is present.
+ */
+export function normalizeFixedExpense(e: FixedExpense): FixedExpense {
+  return {
+    ...e,
+    createdAt: e.createdAt || FIXED_EXPENSE_EPOCH,
+    updatedAt: e.updatedAt || FIXED_EXPENSE_EPOCH,
+    deleted: e.deleted ?? false,
+  };
+}
+
 function mergeSettings(local: Settings, remote: Settings): Settings {
   // Union monthly budgets so a budget set on either device survives; local wins key conflicts.
   const monthlyBudgets = { ...remote.monthlyBudgets, ...local.monthlyBudgets };
-  // Scalar fields: local wins (most recent user context); keep the newest updatedAt.
-  return { ...local, monthlyBudgets, updatedAt: maxIso(local.updatedAt, remote.updatedAt) };
+  // Per-month fixed-expense snapshots. A month's snapshot is editable in-place (add/edit/delete on that
+  // month), so merge it like records: union month keys, then WITHIN each month pair items by id — union
+  // additions, local wins edits, delete wins. (Whole-key local-wins would drop the other device's edits
+  // to the same month.) Items carry SyncMeta; legacy ones get it backfilled.
+  const monthlyFixedExpenses: Record<string, FixedExpense[]> = {};
+  const feMonthKeys = new Set<string>([
+    ...Object.keys(local.monthlyFixedExpenses ?? {}),
+    ...Object.keys(remote.monthlyFixedExpenses ?? {}),
+  ]);
+  for (const key of feMonthKeys) {
+    const l = local.monthlyFixedExpenses?.[key];
+    const r = remote.monthlyFixedExpenses?.[key];
+    monthlyFixedExpenses[key] =
+      l && r
+        ? mergeById(l.map(normalizeFixedExpense), r.map(normalizeFixedExpense))
+        : (l ?? r ?? []).map(normalizeFixedExpense);
+  }
+  // Fixed expenses are their OWN id-keyed synced collection, not a scalar: union additions, local
+  // wins edits, delete wins. Previously `{ ...local }` overwrote them wholesale, so the other
+  // device's additions were dropped — and the next push destroyed them on Drive too.
+  const fixedExpenses = mergeById(
+    local.fixedExpenses.map(normalizeFixedExpense),
+    remote.fixedExpenses.map(normalizeFixedExpense),
+  );
+  // Type labels have no id/tombstone → union (dedupe), local order first. A deleted label can
+  // resurrect, but it's cosmetic (the expense keeps its own `type` string regardless).
+  const fixedExpenseTypes = [
+    ...local.fixedExpenseTypes,
+    ...remote.fixedExpenseTypes.filter((t) => !local.fixedExpenseTypes.includes(t)),
+  ];
+  // Default budget is a bare scalar (no per-item meta), so plain 'local wins' never lets a budget set
+  // on another device sync in. Merge it by its own timestamp — the most recently edited budget wins.
+  const localBudgetTs = local.budgetUpdatedAt ?? '';
+  const remoteBudgetTs = remote.budgetUpdatedAt ?? '';
+  const budgetFromLocal = localBudgetTs >= remoteBudgetTs;
+  // Remaining scalar fields (currency, lastBudgetConfirmation): local wins; keep the newest updatedAt.
+  return {
+    ...local,
+    budget: budgetFromLocal ? local.budget : remote.budget,
+    budgetUpdatedAt: maxIso(localBudgetTs, remoteBudgetTs) || undefined,
+    monthlyBudgets,
+    monthlyFixedExpenses,
+    fixedExpenses,
+    fixedExpenseTypes,
+    updatedAt: maxIso(local.updatedAt, remote.updatedAt),
+  };
 }
 
 /** Merge per-year add/delete state: for each year keep the entry with the newest updatedAt (local wins ties). */

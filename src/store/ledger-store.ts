@@ -5,9 +5,10 @@ import { DEFAULT_SETTINGS, LEDGER_SNAPSHOT_VERSION } from '@/constants/ledger';
 import { monthKey } from '@/lib/date';
 import { newId, nowIso } from '@/lib/id';
 import { asyncStorageLedger, type LedgerStorage } from '@/lib/storage/ledger-storage';
-import { mergeLedger } from '@/lib/sync/merge';
+import { mergeLedger, normalizeFixedExpense } from '@/lib/sync/merge';
 import type {
   CategoryItem,
+  FixedExpense,
   LedgerSnapshot,
   Settings,
   Transaction,
@@ -29,6 +30,18 @@ function persistSnapshot(snapshot: LedgerSnapshot): void {
     .catch((err) => console.warn('[ledger] persist failed', err));
 }
 
+/**
+ * The base list to edit for a month's fixed expenses: its frozen snapshot if it has one, else a fresh
+ * copy of the live template (the first edit persists this copy — freezing the month). Copying keeps
+ * per-month edits off the shared template. Includes tombstones (snapshot case) so merges stay correct.
+ */
+function monthSnapshotBase(settings: Settings, key: string): FixedExpense[] {
+  return (
+    settings.monthlyFixedExpenses?.[key] ??
+    settings.fixedExpenses.filter((e) => !e.deleted).map((e) => ({ ...e }))
+  );
+}
+
 export interface NewTransactionInput {
   year: number;
   month: number;
@@ -46,6 +59,15 @@ export type TransactionPatch = Partial<
 >;
 
 export type CategoryInput = Pick<CategoryItem, 'name' | 'icon' | 'type' | 'subcategories'>;
+
+/** The editable fields of a fixed expense (sync meta is stamped by the store, not the caller). */
+export type FixedExpenseInput = {
+  title: string;
+  type: string;
+  amount: number;
+  date: number | null;
+  note?: string;
+};
 
 export interface LedgerState {
   /** True once the on-device snapshot has been loaded (or seeded on first launch). */
@@ -74,6 +96,20 @@ export interface LedgerState {
   updateMonthlyBudget: (year: number, month: number, budget: number | null) => void;
   confirmBudget: (yearMonth: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
+
+  addFixedExpense: (input: FixedExpenseInput) => FixedExpense;
+  updateFixedExpense: (id: string, patch: Partial<FixedExpenseInput>) => void;
+  deleteFixedExpense: (id: string) => void;
+
+  /** Edit ONE month's frozen fixed-expense snapshot (seeds from the template if the month isn't frozen yet). */
+  addMonthFixedExpense: (year: number, month: number, input: FixedExpenseInput) => FixedExpense;
+  updateMonthFixedExpense: (
+    year: number,
+    month: number,
+    id: string,
+    patch: Partial<FixedExpenseInput>,
+  ) => void;
+  deleteMonthFixedExpense: (year: number, month: number, id: string) => void;
 
   addCategory: (input: CategoryInput) => CategoryItem;
   updateCategory: (id: string, patch: Partial<CategoryInput>) => void;
@@ -105,12 +141,31 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
     hydrate: async () => {
       const snapshot = await storage.load();
       if (snapshot) {
+        const loaded: Settings = {
+          ...DEFAULT_SETTINGS,
+          ...snapshot.settings,
+          // Backfill sync meta on fixed expenses saved before FixedExpense carried it, so every
+          // in-memory expense has id/updatedAt/deleted for the merge.
+          fixedExpenses: (snapshot.settings?.fixedExpenses ?? []).map(normalizeFixedExpense),
+        };
+        // Migration: months that already have a budget but no frozen snapshot predate per-month freezing.
+        // Freeze them at the current template so their fixed-expense figures stop drifting when the
+        // template later changes. We have no historical template, so today's is the best we can do; only
+        // budgeted months are captured (matching the freeze-on-budget rule).
+        const monthlyFixedExpenses = { ...(loaded.monthlyFixedExpenses ?? {}) };
+        for (const key of Object.keys(loaded.monthlyBudgets ?? {})) {
+          if (!monthlyFixedExpenses[key]) {
+            monthlyFixedExpenses[key] = loaded.fixedExpenses
+              .filter((e) => !e.deleted)
+              .map((e) => ({ ...e }));
+          }
+        }
         set({
           years: snapshot.years?.length ? snapshot.years : [new Date().getFullYear()],
           yearMeta: snapshot.yearMeta ?? {},
           records: snapshot.records ?? {},
           categories: snapshot.categories?.length ? snapshot.categories : DEFAULT_CATEGORIES,
-          settings: { ...DEFAULT_SETTINGS, ...snapshot.settings },
+          settings: { ...loaded, monthlyFixedExpenses },
           hydrated: true,
         });
       } else {
@@ -263,7 +318,18 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
         const monthlyBudgets = { ...s.settings.monthlyBudgets };
         if (budget === null) delete monthlyBudgets[key];
         else monthlyBudgets[key] = budget;
-        return { settings: { ...s.settings, monthlyBudgets, updatedAt: nowIso() } };
+        // Freeze this month's fixed expenses the first time it gets a budget. Once frozen it's never
+        // re-captured — so editing the Settings template (or re-saving this budget) can't rewrite a past
+        // month. Template edits only reach months not yet frozen (i.e. future months).
+        const monthlyFixedExpenses = { ...s.settings.monthlyFixedExpenses };
+        if (budget !== null && budget > 0 && !monthlyFixedExpenses[key]) {
+          monthlyFixedExpenses[key] = s.settings.fixedExpenses
+            .filter((e) => !e.deleted)
+            .map((e) => ({ ...e }));
+        }
+        return {
+          settings: { ...s.settings, monthlyBudgets, monthlyFixedExpenses, updatedAt: nowIso() },
+        };
       });
       persist();
     },
@@ -276,7 +342,143 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
     },
 
     updateSettings: (patch) => {
-      set((s) => ({ settings: { ...s.settings, ...patch, updatedAt: nowIso() } }));
+      set((s) => {
+        const ts = nowIso();
+        return {
+          settings: {
+            ...s.settings,
+            ...patch,
+            updatedAt: ts,
+            // Stamp the budget's own edit time so it merges by recency across devices — a bare scalar
+            // otherwise stays "local wins" in the Drive merge and never syncs in from another device.
+            budgetUpdatedAt: patch.budget !== undefined ? ts : s.settings.budgetUpdatedAt,
+          },
+        };
+      });
+      persist();
+    },
+
+    addFixedExpense: (input) => {
+      const ts = nowIso();
+      const expense: FixedExpense = {
+        id: newId(),
+        createdAt: ts,
+        updatedAt: ts,
+        deleted: false,
+        title: input.title,
+        type: input.type,
+        amount: input.amount,
+        date: input.date,
+        note: input.note ?? '',
+      };
+      set((s) => ({
+        settings: {
+          ...s.settings,
+          fixedExpenses: [...s.settings.fixedExpenses, expense],
+          updatedAt: ts,
+        },
+      }));
+      persist();
+      return expense;
+    },
+
+    updateFixedExpense: (id, patch) => {
+      const ts = nowIso();
+      set((s) => ({
+        settings: {
+          ...s.settings,
+          fixedExpenses: s.settings.fixedExpenses.map((e) =>
+            e.id === id ? { ...e, ...patch, note: patch.note ?? e.note, updatedAt: ts } : e,
+          ),
+          updatedAt: ts,
+        },
+      }));
+      persist();
+    },
+
+    deleteFixedExpense: (id) => {
+      const ts = nowIso();
+      set((s) => ({
+        settings: {
+          ...s.settings,
+          // Soft-delete (tombstone) rather than drop, so the deletion survives the Drive merge.
+          fixedExpenses: s.settings.fixedExpenses.map((e) =>
+            e.id === id ? { ...e, deleted: true, updatedAt: ts } : e,
+          ),
+          updatedAt: ts,
+        },
+      }));
+      persist();
+    },
+
+    // --- Per-month fixed expenses: edit the frozen snapshot for one month. monthSnapshotBase seeds
+    // from the template on first touch, so an edit here lands on that month only, never the template. ---
+    addMonthFixedExpense: (year, month, input) => {
+      const ts = nowIso();
+      const expense: FixedExpense = {
+        id: newId(),
+        createdAt: ts,
+        updatedAt: ts,
+        deleted: false,
+        title: input.title,
+        type: input.type,
+        amount: input.amount,
+        date: input.date,
+        note: input.note ?? '',
+      };
+      set((s) => {
+        const key = monthKey(year, month);
+        const base = monthSnapshotBase(s.settings, key);
+        return {
+          settings: {
+            ...s.settings,
+            monthlyFixedExpenses: { ...s.settings.monthlyFixedExpenses, [key]: [...base, expense] },
+            updatedAt: ts,
+          },
+        };
+      });
+      persist();
+      return expense;
+    },
+
+    updateMonthFixedExpense: (year, month, id, patch) => {
+      const ts = nowIso();
+      set((s) => {
+        const key = monthKey(year, month);
+        const base = monthSnapshotBase(s.settings, key);
+        return {
+          settings: {
+            ...s.settings,
+            monthlyFixedExpenses: {
+              ...s.settings.monthlyFixedExpenses,
+              [key]: base.map((e) =>
+                e.id === id ? { ...e, ...patch, note: patch.note ?? e.note, updatedAt: ts } : e,
+              ),
+            },
+            updatedAt: ts,
+          },
+        };
+      });
+      persist();
+    },
+
+    deleteMonthFixedExpense: (year, month, id) => {
+      const ts = nowIso();
+      set((s) => {
+        const key = monthKey(year, month);
+        const base = monthSnapshotBase(s.settings, key);
+        return {
+          settings: {
+            ...s.settings,
+            // Soft-delete (tombstone) so the deletion survives the per-item Drive merge for this month.
+            monthlyFixedExpenses: {
+              ...s.settings.monthlyFixedExpenses,
+              [key]: base.map((e) => (e.id === id ? { ...e, deleted: true, updatedAt: ts } : e)),
+            },
+            updatedAt: ts,
+          },
+        };
+      });
       persist();
     },
 

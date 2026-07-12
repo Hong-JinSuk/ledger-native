@@ -1,19 +1,13 @@
-import {
-  BottomSheetBackdrop,
-  BottomSheetModal,
-  BottomSheetView,
-  type BottomSheetBackdropProps,
-} from '@gorhom/bottom-sheet';
 import { Check } from 'lucide-react-native';
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { SheetTextInput } from '@/components/sheet-text-input';
+import { AdaptiveSheet, type AdaptiveSheetRef } from '@/components/adaptive-sheet';
+import { AmountInput } from '@/components/amount-input';
 import { useToast } from '@/components/toast';
 import { Palette } from '@/constants/palette';
-import { monoAmountWidth } from '@/lib/amount-width';
 import { currentMonthKey, monthKey } from '@/lib/date';
-import { formatAmount, parseAmount } from '@/lib/money';
+import { parseAmount } from '@/lib/money';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
 import { useLedgerStore } from '@/store/ledger-store';
 
@@ -25,7 +19,7 @@ export const BudgetDrawer = forwardRef<BudgetDrawerRef, Props>(function BudgetDr
   { year, month, onClose },
   ref,
 ) {
-  const sheetRef = useRef<BottomSheetModal>(null);
+  const sheetRef = useRef<AdaptiveSheetRef>(null);
   const [amount, setAmount] = useState('');
   const [useDefault, setUseDefault] = useState(false);
 
@@ -54,7 +48,7 @@ export const BudgetDrawer = forwardRef<BudgetDrawerRef, Props>(function BudgetDr
     updateMonthlyBudget(year, month, value > 0 ? value : null);
     if (useDefault && value > 0) updateSettings({ budget: value });
     if (isCurrentMonth) confirmBudget(currentMonthKey());
-    toast('예산을 저장했어요');
+    toast.success('예산을 저장했어요');
     sheetRef.current?.dismiss();
   }, [amount, useDefault, isCurrentMonth, year, month, updateMonthlyBudget, updateSettings, confirmBudget, toast]);
 
@@ -64,28 +58,16 @@ export const BudgetDrawer = forwardRef<BudgetDrawerRef, Props>(function BudgetDr
     sheetRef.current?.dismiss();
   }, [isCurrentMonth, confirmBudget]);
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.35} />
-    ),
-    [],
-  );
-
   return (
-    <BottomSheetModal
+    <AdaptiveSheet
       ref={sheetRef}
       snapPoints={['46%']}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      keyboardBehavior="interactive"
-      backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: Palette.paper }}
-      handleIndicatorStyle={{ backgroundColor: Palette.line }}
+      scroll={false}
+      contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }}
       onDismiss={() => {
         onClose?.();
         syncOnEditEnd(); // write-end: push this edit to Drive (no-op if nothing changed)
       }}>
-      <BottomSheetView style={{ paddingHorizontal: 20, paddingBottom: 32 }}>
         <Text className="mb-1 text-2xl text-ink font-serif">
           {month}월 예산
         </Text>
@@ -94,16 +76,10 @@ export const BudgetDrawer = forwardRef<BudgetDrawerRef, Props>(function BudgetDr
         </Text>
 
         <View className="flex-row items-end justify-center gap-1">
-          <SheetTextInput
-            value={amount ? formatAmount(parseAmount(amount)) : ''}
-            onChangeText={(t) => setAmount(String(parseAmount(t)))}
-            keyboardType="number-pad"
-            placeholder="0"
-            placeholderTextColor={Palette.line}
-            // Size the field to its content on web so the centered [number] 원 stays tight and never
-            // overflows (RNW gives an unconstrained <input> a wide default). Native auto-sizes.
-            style={monoAmountWidth(amount ? formatAmount(parseAmount(amount)) : '', 36)}
-            className="text-center text-4xl text-ink font-mono-semibold"
+          <AmountInput
+            value={parseAmount(amount)}
+            onChangeValue={(n) => setAmount(String(n))}
+            onSubmitEditing={onSave}
           />
           <Text className="pb-1 text-xl text-muted font-serif">원</Text>
         </View>
@@ -126,7 +102,6 @@ export const BudgetDrawer = forwardRef<BudgetDrawerRef, Props>(function BudgetDr
         <Pressable onPress={onSkip} className="mt-2 items-center py-2 active:opacity-60">
           <Text className="text-sm text-muted font-sans-medium">나중에 하기</Text>
         </Pressable>
-      </BottomSheetView>
-    </BottomSheetModal>
+    </AdaptiveSheet>
   );
 });

@@ -1,5 +1,5 @@
-import { useLocalSearchParams } from 'expo-router';
-import { Plus, Search, Trash2 } from 'lucide-react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Pencil, Plus, Search, Trash2 } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
@@ -8,6 +8,7 @@ import { AppHeader } from '@/components/app-header';
 import { useConfirm } from '@/components/confirm-dialog';
 import { BudgetDrawer, type BudgetDrawerRef } from '@/components/budget-drawer';
 import { CategoryIcon } from '@/components/category-icon';
+import { EmptyState } from '@/components/empty-state';
 import { FadeIn } from '@/components/fade-in';
 import { RecordDrawer, type RecordDrawerRef } from '@/components/record-drawer';
 import { Screen } from '@/components/screen';
@@ -20,7 +21,7 @@ import {
   monthKey,
   weekdayLabel,
 } from '@/lib/date';
-import { fixedExpensesTotal, getMonthlyBudget } from '@/lib/ledger/budget';
+import { getMonthlyBudget, monthFixedTotal } from '@/lib/ledger/budget';
 import {
   activeRows,
   groupByDay,
@@ -49,6 +50,7 @@ export default function SpreadsheetView() {
   const settings = useLedgerStore((s) => s.settings);
   const deleteMonth = useLedgerStore((s) => s.deleteMonth);
   const confirm = useConfirm();
+  const router = useRouter();
 
   const [mode, setMode] = useState<ViewMode>('list');
   const [query, setQuery] = useState('');
@@ -60,6 +62,8 @@ export default function SpreadsheetView() {
   const openAdd = (day?: number | null) =>
     drawerRef.current?.present(null, typeof day === 'number' ? day : null);
   const openEdit = (tx: Transaction) => drawerRef.current?.present(tx);
+  const goToFixed = () =>
+    router.push({ pathname: '/[year]/[month]/fixed', params: { year: String(y), month: String(m) } });
 
   const onDeleteMonth = async () => {
     const ok = await confirm({
@@ -98,7 +102,7 @@ export default function SpreadsheetView() {
 
   const summary = monthSummary(records[key]);
   const remaining = monthRemainingBudget(records[key], settings, y, m);
-  const fixedTotal = fixedExpensesTotal(settings);
+  const fixedTotal = monthFixedTotal(settings, y, m);
 
   const filtered = useMemo(() => sortRowsByDayDesc(searchRows(rows, query)), [rows, query]);
   const dayGroups = useMemo(() => {
@@ -131,7 +135,7 @@ export default function SpreadsheetView() {
           <FadeIn>
             <Pressable
               onPress={() => budgetRef.current?.present()}
-              className="mb-5 rounded-2xl border border-line bg-white/60 px-5 py-5 active:opacity-70">
+              className="mb-3 rounded-2xl border border-line bg-white/60 px-5 py-5 active:opacity-70">
               {remaining !== null ? (
                 <>
                   <Text className="text-[10px] uppercase tracking-wider text-muted font-sans-semibold">
@@ -165,6 +169,19 @@ export default function SpreadsheetView() {
             </Pressable>
           </FadeIn>
 
+          {/* Edit THIS month's fixed expenses (its frozen snapshot). Settings only seeds new months. */}
+          <FadeIn>
+            <Pressable
+              onPress={goToFixed}
+              hitSlop={8}
+              className="mb-5 flex-row items-center gap-1.5 self-start py-1 pr-2 active:opacity-60">
+              <Pencil size={13} color={Palette.muted} strokeWidth={2} />
+              <Text className="text-xs text-muted font-sans-medium">
+                {fixedTotal > 0 ? '이 달 고정 지출 수정' : '이 달 고정 지출 추가'}
+              </Text>
+            </Pressable>
+          </FadeIn>
+
           {/* View toggle */}
           <View className="mb-4 flex-row self-start rounded-full bg-fill p-1">
             <SegmentButton label="리스트" active={mode === 'list'} onPress={() => setMode('list')} />
@@ -191,7 +208,7 @@ export default function SpreadsheetView() {
 
           {mode === 'list' ? (
             rows.length === 0 ? (
-              <EmptyState onAdd={() => openAdd(defaultAddDay)} />
+              <FirstRecordEmpty onAdd={() => openAdd(defaultAddDay)} />
             ) : dayGroups.length === 0 ? (
               <Text className="mt-8 text-center text-sm text-muted font-sans">
                 검색 결과가 없어요.
@@ -412,7 +429,7 @@ function MonthCalendar({
   );
 }
 
-function EmptyState({ onAdd }: { onAdd: () => void }) {
+function FirstRecordEmpty({ onAdd }: { onAdd: () => void }) {
   return (
     <View className="mt-10 items-center px-6">
       <Text className="text-center text-base leading-6 text-muted font-sans">
@@ -459,8 +476,8 @@ function SelectedDayDetail({
         </Pressable>
       </View>
       {rows.length === 0 ? (
-        <View className="mt-2 items-center rounded-2xl border border-dashed border-line py-8">
-          <Text className="text-sm text-muted font-sans">이 날은 아직 기록이 없어요.</Text>
+        <View className="mt-2">
+          <EmptyState message="이 날은 아직 기록이 없어요." />
         </View>
       ) : (
         rows.map((row) => (

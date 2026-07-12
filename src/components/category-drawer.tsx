@@ -1,21 +1,17 @@
-import {
-  BottomSheetBackdrop,
-  BottomSheetModal,
-  BottomSheetScrollView,
-  type BottomSheetBackdropProps,
-} from '@gorhom/bottom-sheet';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus, Trash2, X } from 'lucide-react-native';
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Pressable, Text, View } from 'react-native';
 
+import { AdaptiveSheet, type AdaptiveSheetRef } from '@/components/adaptive-sheet';
 import { CategoryIcon } from '@/components/category-icon';
 import { useConfirm } from '@/components/confirm-dialog';
 import { SheetTextInput } from '@/components/sheet-text-input';
 import { useToast } from '@/components/toast';
 import { PICKABLE_ICONS } from '@/constants/icons';
 import { Palette } from '@/constants/palette';
+import { animateNextLayout } from '@/lib/animate-next-layout';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
 import { categoryFormSchema, type CategoryFormValues } from '@/schemas/category';
 import { useLedgerStore } from '@/store/ledger-store';
@@ -47,7 +43,7 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
   { onClose },
   ref,
 ) {
-  const sheetRef = useRef<BottomSheetModal>(null);
+  const sheetRef = useRef<AdaptiveSheetRef>(null);
   // The drawer owns "which category" (set at present time) — a fresh add always opens blank.
   const [category, setCategory] = useState<CategoryItem | null>(null);
 
@@ -77,13 +73,14 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
 
   const onSubmit = useCallback(
     (values: CategoryFormValues) => {
+      animateNextLayout(); // gently settle the grid when a tile is added/removed
       const subcategories = values.subcategories.length ? values.subcategories : ['기타'];
       if (isEdit && category) {
         updateCategory(category.id, { ...values, subcategories });
       } else {
         addCategory({ ...values, subcategories });
       }
-      toast(isEdit ? '수정했어요' : '저장했어요');
+      toast.success(isEdit ? '수정했어요' : '저장했어요');
       sheetRef.current?.dismiss();
     },
     [isEdit, category, updateCategory, addCategory, toast],
@@ -96,33 +93,20 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
       message: '이미 기록된 내역은 그대로 남아요.',
     });
     if (!ok) return;
+    animateNextLayout();
     deleteCategory(category.id);
     sheetRef.current?.dismiss();
   }, [category, deleteCategory, confirm]);
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.35} />
-    ),
-    [],
-  );
-
   return (
-    <BottomSheetModal
+    <AdaptiveSheet
       ref={sheetRef}
       snapPoints={['90%']}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      keyboardBehavior="interactive"
-      keyboardBlurBehavior="restore"
-      backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: Palette.paper }}
-      handleIndicatorStyle={{ backgroundColor: Palette.line }}
+      contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
       onDismiss={() => {
         onClose?.();
         syncOnEditEnd(); // write-end: push this edit to Drive (no-op if nothing changed)
       }}>
-      <BottomSheetScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
         <Text className="mb-6 text-2xl text-ink font-serif">
           {isEdit ? '카테고리 수정' : '새 카테고리'}
         </Text>
@@ -136,6 +120,8 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
               <SheetTextInput
                 value={field.value}
                 onChangeText={field.onChange}
+                onSubmitEditing={handleSubmit(onSubmit)}
+                returnKeyType="done"
                 placeholder="예: 식비, 급여"
                 placeholderTextColor={Palette.muted}
                 className="rounded-2xl bg-fill px-4 py-3 text-base text-ink font-sans"
@@ -267,8 +253,7 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
             <Text className="text-sm text-expense font-sans-medium">삭제</Text>
           </Pressable>
         )}
-      </BottomSheetScrollView>
-    </BottomSheetModal>
+    </AdaptiveSheet>
   );
 });
 

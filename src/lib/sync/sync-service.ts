@@ -71,12 +71,14 @@ async function run(): Promise<boolean> {
   try {
     // 1) Peek at the remote's metadata — one lightweight files.list, no download.
     const meta = await statLedgerFile();
+    if (__DEV__) console.log('[sync] stat →', meta ? `found ${meta.id} @ ${meta.modifiedTime}` : 'NO FILE');
 
     // 2) PULL — only when the remote actually changed since we last saw it. An unchanged
     //    modifiedTime means Drive still holds exactly what we last reconciled, so the (potentially
     //    large) download is skipped entirely.
     if (meta && meta.modifiedTime !== lastRemoteModifiedTime) {
       const remoteSnap = await readLedgerFile(meta.id);
+      if (__DEV__) console.log('[sync] PULL:', remoteSnap ? 'read OK → merging' : 'null/corrupt → skip merge');
       if (remoteSnap) {
         // applySyncedSnapshot re-merges against the CURRENT store, so edits made during the async
         // download still win and are never clobbered.
@@ -84,6 +86,8 @@ async function run(): Promise<boolean> {
         useLedgerStore.getState().applySyncedSnapshot(merged);
       }
       lastRemoteModifiedTime = meta.modifiedTime;
+    } else if (__DEV__) {
+      console.log('[sync] pull skipped — meta?', !!meta, '| mt===lastSeen?', meta?.modifiedTime === lastRemoteModifiedTime);
     }
 
     // 3) PUSH — only when local has un-pushed changes (dirty), or the remote file doesn't exist yet.
@@ -93,11 +97,17 @@ async function run(): Promise<boolean> {
       const written = meta
         ? await writeLedgerFile(meta.id, localSnapshot())
         : await createLedgerFile(localSnapshot());
+      if (__DEV__) {
+        console.log('[sync] PUSH', meta ? 'overwrite' : 'CREATE NEW FILE', '→', written.id, '@', written.modifiedTime);
+      }
       lastPushedRev = revAtPush;
       lastRemoteModifiedTime = written.modifiedTime; // our own write is now the known remote state
+    } else if (__DEV__) {
+      console.log('[sync] push skipped — not dirty (localRev', localRev, '=== lastPushedRev', lastPushedRev, ')');
     }
 
     update({ status: 'synced', lastSyncedAt: nowIso(), error: null });
+    if (__DEV__) console.log('[sync] ✅ synced');
     return true;
   } catch (err) {
     const message =

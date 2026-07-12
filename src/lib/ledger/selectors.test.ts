@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Settings, Transaction } from '@/types/ledger';
+import type { FixedExpense, Settings, Transaction } from '@/types/ledger';
 import {
   activeRows,
   groupByDay,
@@ -41,6 +41,20 @@ function settings(over: Partial<Settings> = {}): Settings {
   };
 }
 
+function fe(id: string, amount: number): FixedExpense {
+  return {
+    id,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    deleted: false,
+    type: 'x',
+    title: id,
+    amount,
+    date: null,
+    note: '',
+  };
+}
+
 describe('selectors', () => {
   it('activeRows drops soft-deleted and fully-blank rows', () => {
     const rows = [
@@ -65,11 +79,43 @@ describe('selectors', () => {
   it('monthRemainingBudget = budget − fixed − expense + income, or null when unset', () => {
     const s = settings({
       monthlyBudgets: { '2026-07': 100000 },
-      fixedExpenses: [{ id: 'f', type: 'x', title: 't', amount: 20000, date: null, note: '' }],
+      fixedExpenses: [
+        {
+          id: 'f',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          deleted: false,
+          type: 'x',
+          title: 't',
+          amount: 20000,
+          date: null,
+          note: '',
+        },
+      ],
     });
     const rows = [mk({ type: '지출', amount: 30000 }), mk({ type: '수입', amount: 5000 })];
     expect(monthRemainingBudget(rows, s, 2026, 7)).toBe(55000);
     expect(monthRemainingBudget(rows, settings(), 2026, 7)).toBeNull();
+  });
+
+  it('a frozen month reads its snapshot, so editing the template cannot move its remaining budget', () => {
+    // July frozen at 20,000; the live template is now 99,000 — July must ignore the template.
+    const s = settings({
+      monthlyBudgets: { '2026-07': 100000 },
+      fixedExpenses: [fe('live', 99000)],
+      monthlyFixedExpenses: { '2026-07': [fe('snap', 20000)] },
+    });
+    const rows = [mk({ type: '지출', amount: 30000 })];
+    expect(monthRemainingBudget(rows, s, 2026, 7)).toBe(50000); // 100000 − 20000(snapshot) − 30000
+  });
+
+  it('an unfrozen month falls back to the live template total', () => {
+    const s = settings({
+      monthlyBudgets: { '2026-08': 100000 },
+      fixedExpenses: [fe('live', 15000)],
+    });
+    const rows = [mk({ type: '지출', amount: 10000 })];
+    expect(monthRemainingBudget(rows, s, 2026, 8)).toBe(75000); // 100000 − 15000(template) − 10000
   });
 
   it('groupByDay buckets by day (null → 0)', () => {

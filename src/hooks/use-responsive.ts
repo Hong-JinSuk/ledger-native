@@ -13,3 +13,13 @@ export function useIsWideScreen(): boolean {
   const { width } = useWindowDimensions();
   return Platform.OS === 'web' && width >= WIDE_BREAKPOINT;
 }
+
+/**
+ * Width-only "tablet and up" check — true on ANY platform once the viewport is ≥ the breakpoint
+ * (unlike useIsWideScreen, which is web-only). Drives the drawer surface: phones get the bottom
+ * sheet, tablets/desktop get a centered modal. Re-evaluates on resize/rotation.
+ */
+export function useIsWideViewport(): boolean {
+  const { width } = useWindowDimensions();
+  return width >= WIDE_BREAKPOINT;
+}

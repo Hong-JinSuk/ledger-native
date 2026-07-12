@@ -1,11 +1,6 @@
 import type { Settings, Transaction } from '@/types/ledger';
 import { monthKey } from '@/lib/date';
-import {
-  configuredMonthsCount,
-  fixedExpensesTotal,
-  getMonthlyBudget,
-  getYearlyBudget,
-} from '@/lib/ledger/budget';
+import { getMonthlyBudget, getYearlyBudget, monthFixedTotal } from '@/lib/ledger/budget';
 
 export interface PeriodSummary {
   income: number;
@@ -60,6 +55,7 @@ export function yearSummary(
  * Remaining budget for a month, or null when no budget is set.
  * Formula ported from the web (used identically in 4 screens):
  *   budget − fixedExpenses − expense + income
+ * Fixed expenses are the month's frozen snapshot (if budgeted) so past months never drift.
  */
 export function monthRemainingBudget(
   rows: Transaction[] | undefined,
@@ -70,10 +66,10 @@ export function monthRemainingBudget(
   const budget = getMonthlyBudget(settings, year, month);
   if (budget <= 0) return null;
   const s = monthSummary(rows);
-  return budget - fixedExpensesTotal(settings) - s.expense + s.income;
+  return budget - monthFixedTotal(settings, year, month) - s.expense + s.income;
 }
 
-/** Remaining budget for a whole year (yearly fixed costs scale with # of configured months). */
+/** Remaining budget for a whole year: each configured month contributes its OWN frozen fixed total. */
 export function yearRemainingBudget(
   records: Record<string, Transaction[]>,
   settings: Settings,
@@ -82,7 +78,12 @@ export function yearRemainingBudget(
   const yearlyBudget = getYearlyBudget(settings, year);
   if (yearlyBudget <= 0) return null;
   const s = yearSummary(records, year);
-  const yearlyFixed = fixedExpensesTotal(settings) * configuredMonthsCount(settings, year);
+  let yearlyFixed = 0;
+  for (let m = 1; m <= 12; m++) {
+    if (settings.monthlyBudgets?.[monthKey(year, m)] !== undefined) {
+      yearlyFixed += monthFixedTotal(settings, year, m);
+    }
+  }
   return yearlyBudget - yearlyFixed - s.expense + s.income;
 }
 

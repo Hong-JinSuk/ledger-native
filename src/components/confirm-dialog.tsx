@@ -49,39 +49,43 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      <Modal
-        visible={options !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => close(false)}>
-        <Pressable
-          onPress={() => close(false)}
-          className="flex-1 items-center justify-center bg-black/40 px-8">
-          {/* Inner press absorbs taps so tapping the card doesn't dismiss. */}
-          <Pressable onPress={() => {}} className="w-full max-w-sm rounded-3xl bg-paper p-6">
-            <Text className="text-xl text-ink font-serif">{options?.title}</Text>
-            {!!options?.message && (
-              <Text className="mt-2 text-sm leading-6 text-muted font-sans">{options.message}</Text>
-            )}
-            <View className="mt-6 flex-row gap-2">
-              <Pressable
-                onPress={() => close(false)}
-                className="flex-1 items-center rounded-full bg-fill py-3.5 active:opacity-70">
-                <Text className="text-sm text-ink font-sans-semibold">
-                  {options?.cancelLabel ?? '취소'}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => close(true)}
-                className={`flex-1 items-center rounded-full py-3.5 active:opacity-80 ${destructive ? 'bg-expense' : 'bg-ink'}`}>
-                <Text className="text-sm text-paper font-sans-bold">
-                  {options?.confirmLabel ?? '삭제'}
-                </Text>
-              </Pressable>
-            </View>
+      {/*
+       * Mount the Modal ONLY while a confirm is active. Every RNW Modal is appended to document.body
+       * and shares zIndex 9999, so stacking is decided by body DOM order (= mount order). A drawer's
+       * Modal mounts when its screen mounts — later than this root-level provider — so a permanently
+       * mounted confirm would sit BEHIND an open drawer. Mounting on demand appends it last → on top.
+       */}
+      {options !== null && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => close(false)}>
+          <Pressable
+            onPress={() => close(false)}
+            className="flex-1 items-center justify-center bg-black/40 px-8">
+            {/* Inner press absorbs taps so tapping the card doesn't dismiss. */}
+            <Pressable onPress={() => {}} className="w-full max-w-sm rounded-3xl bg-paper p-6">
+              <Text className="text-xl text-ink font-serif">{options.title}</Text>
+              {!!options.message && (
+                <Text className="mt-2 text-sm leading-6 text-muted font-sans">{options.message}</Text>
+              )}
+              <View className="mt-6 flex-row gap-2">
+                <Pressable
+                  onPress={() => close(false)}
+                  className="flex-1 items-center rounded-full bg-fill py-3.5 active:opacity-70">
+                  <Text className="text-sm text-ink font-sans-semibold">
+                    {options.cancelLabel ?? '취소'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => close(true)}
+                  className={`flex-1 items-center rounded-full py-3.5 active:opacity-80 ${destructive ? 'bg-expense' : 'bg-ink'}`}>
+                  <Text className="text-sm text-paper font-sans-bold">
+                    {options.confirmLabel ?? '삭제'}
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
+      )}
     </ConfirmContext.Provider>
   );
 }

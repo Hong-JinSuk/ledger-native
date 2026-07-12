@@ -47,9 +47,13 @@ export interface CategoryItem extends SyncMeta {
   subcategories: string[];
 }
 
-/** A recurring fixed cost. Local to Settings (not an independently-synced entity). */
-export interface FixedExpense {
-  id: string;
+/**
+ * A recurring fixed cost. Stored inside the Settings document but merged as its OWN id-keyed
+ * synced collection (like Transaction/CategoryItem) — so an expense added on one device isn't
+ * clobbered by the other device's whole-settings overwrite. Carries {@link SyncMeta} for that:
+ * pair by `id`, local wins conflicts, and deletions tombstone (never hard-delete) so they survive.
+ */
+export interface FixedExpense extends SyncMeta {
   type: string;
   title: string;
   amount: number;
@@ -62,12 +66,26 @@ export interface FixedExpense {
 export interface Settings {
   /** Default monthly budget, offered when confirming a new month. */
   budget: number;
+  /** ISO-8601 of the last {@link budget} change — lets this scalar merge by recency, not just local-wins. */
+  budgetUpdatedAt?: string;
   /** Per-month budget overrides. Key: 'YYYY-MM'. */
   monthlyBudgets: Record<string, number>;
   /** Currency suffix, e.g. '원'. */
   currency: string;
   fixedExpenseTypes: string[];
+  /**
+   * The LIVE template of recurring fixed costs (edited in Settings). Applied to a month only until
+   * that month is frozen — see {@link monthlyFixedExpenses}. Editing it never rewrites a frozen month.
+   */
   fixedExpenses: FixedExpense[];
+  /**
+   * Per-month FROZEN snapshot of the fixed expenses (full list) as they stood when the month's budget
+   * was first set. Key: 'YYYY-MM'. A month's budget calc reads its snapshot here if present, else the
+   * live {@link fixedExpenses} template — so past months keep their own fixed costs and never drift when
+   * the template changes. Merged whole-key (union, local wins) like {@link monthlyBudgets}; optional
+   * because snapshots written before this feature omit it.
+   */
+  monthlyFixedExpenses?: Record<string, FixedExpense[]>;
   /** 'YYYY-MM' of the month whose budget prompt the user last confirmed (drives the "first entry" prompt). */
   lastBudgetConfirmation?: string;
   /** ISO-8601 — for future settings-level merge. */
