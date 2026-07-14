@@ -209,6 +209,19 @@ describe('mergeLedger', () => {
     expect(merged['2026-07'][0].deleted).toBe(true);
   });
 
+  it('a reset month stays cleared — its budget + snapshot are dropped, not resurrected from remote', () => {
+    // Local reset June (tombstoned via clearedMonths); remote still holds June's budget + fixed snapshot.
+    const local = base({});
+    local.settings.clearedMonths = ['2026-06'];
+    const remote = base({});
+    remote.settings.monthlyBudgets = { '2026-06': 1_500_000 };
+    remote.settings.monthlyFixedExpenses = { '2026-06': [fe('rent', 500000)] };
+    const merged = mergeLedger(local, remote).settings;
+    expect(merged.monthlyBudgets['2026-06']).toBeUndefined();
+    expect(merged.monthlyFixedExpenses?.['2026-06']).toBeUndefined();
+    expect(merged.clearedMonths).toContain('2026-06');
+  });
+
   it('a deleted fixed expense stays deleted (delete wins over a newer remote edit)', () => {
     const local = withFixed(base({}), [fe('a', 1, { deleted: true, updatedAt: '2026-01-01' })]);
     const remote = withFixed(base({}), [fe('a', 999, { deleted: false, updatedAt: '2026-05-01' })]);

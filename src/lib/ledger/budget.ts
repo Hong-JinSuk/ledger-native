@@ -17,17 +17,27 @@ export function getYearlyBudget(settings: Settings, year: number): number {
 }
 
 /**
- * The fixed expenses IN EFFECT for a given month: the month's frozen snapshot if it has one (set when
- * its budget was first saved), otherwise the live template. This is what makes past months immutable —
- * a frozen month reads its own captured list, so editing the template later can't change it.
+ * The fixed expenses IN EFFECT for a given month: ONLY the month's own captured snapshot. If the month
+ * hasn't been set up (no snapshot), it has NO fixed expenses — the Settings template is never a
+ * fallback. The template reaches a month only when the user explicitly applies defaults, which writes
+ * that month's snapshot. This keeps each month independent (no global fixed expenses).
  */
 export function monthFixedExpenses(settings: Settings, year: number, month: number): FixedExpense[] {
   const snapshot = settings.monthlyFixedExpenses?.[monthKey(year, month)];
-  const list = snapshot ?? settings.fixedExpenses;
-  return list.filter((e) => !e.deleted);
+  return (snapshot ?? []).filter((e) => !e.deleted);
 }
 
-/** Total fixed expenses in effect for a month (frozen snapshot if any, else the live template). */
+/** Total fixed expenses in effect for a month (its own snapshot, or 0 if not set up). */
 export function monthFixedTotal(settings: Settings, year: number, month: number): number {
   return monthFixedExpenses(settings, year, month).reduce((sum, e) => sum + (e.amount || 0), 0);
+}
+
+/**
+ * True once a month has been set up (has a budget or its own fixed snapshot). Drives the month-entry
+ * setup prompt: an un-configured month prompts on EVERY entry (until set up), so "나중에 하기" only
+ * closes it for that visit — re-entering shows it again like the first time.
+ */
+export function isMonthConfigured(settings: Settings, year: number, month: number): boolean {
+  const key = monthKey(year, month);
+  return settings.monthlyBudgets?.[key] !== undefined || settings.monthlyFixedExpenses?.[key] !== undefined;
 }

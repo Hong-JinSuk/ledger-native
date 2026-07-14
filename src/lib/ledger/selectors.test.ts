@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { FixedExpense, Settings, Transaction } from '@/types/ledger';
+import { isMonthConfigured } from '@/lib/ledger/budget';
 import {
   activeRows,
   groupByDay,
@@ -77,21 +78,10 @@ describe('selectors', () => {
   });
 
   it('monthRemainingBudget = budget − fixed − expense + income, or null when unset', () => {
+    // Fixed expenses come from THIS month's snapshot (per-month), not a global template.
     const s = settings({
       monthlyBudgets: { '2026-07': 100000 },
-      fixedExpenses: [
-        {
-          id: 'f',
-          createdAt: '2026-01-01T00:00:00.000Z',
-          updatedAt: '2026-01-01T00:00:00.000Z',
-          deleted: false,
-          type: 'x',
-          title: 't',
-          amount: 20000,
-          date: null,
-          note: '',
-        },
-      ],
+      monthlyFixedExpenses: { '2026-07': [fe('f', 20000)] },
     });
     const rows = [mk({ type: '지출', amount: 30000 }), mk({ type: '수입', amount: 5000 })];
     expect(monthRemainingBudget(rows, s, 2026, 7)).toBe(55000);
@@ -109,13 +99,19 @@ describe('selectors', () => {
     expect(monthRemainingBudget(rows, s, 2026, 7)).toBe(50000); // 100000 − 20000(snapshot) − 30000
   });
 
-  it('an unfrozen month falls back to the live template total', () => {
+  it('a month with no snapshot has ZERO fixed expenses — the Settings template is never a fallback', () => {
     const s = settings({
       monthlyBudgets: { '2026-08': 100000 },
-      fixedExpenses: [fe('live', 15000)],
+      fixedExpenses: [fe('live', 15000)], // default template must NOT leak into August
     });
     const rows = [mk({ type: '지출', amount: 10000 })];
-    expect(monthRemainingBudget(rows, s, 2026, 8)).toBe(75000); // 100000 − 15000(template) − 10000
+    expect(monthRemainingBudget(rows, s, 2026, 8)).toBe(90000); // 100000 − 0 − 10000
+  });
+
+  it('isMonthConfigured reflects whether a month has been set up (budget or fixed snapshot)', () => {
+    expect(isMonthConfigured(settings(), 2026, 7)).toBe(false);
+    expect(isMonthConfigured(settings({ monthlyBudgets: { '2026-07': 100000 } }), 2026, 7)).toBe(true);
+    expect(isMonthConfigured(settings({ monthlyFixedExpenses: { '2026-07': [] } }), 2026, 7)).toBe(true);
   });
 
   it('groupByDay buckets by day (null → 0)', () => {

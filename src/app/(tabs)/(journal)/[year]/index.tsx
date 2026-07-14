@@ -8,6 +8,7 @@ import { BackLink } from '@/components/back-link';
 import { FadeIn } from '@/components/fade-in';
 import { HoverReveal } from '@/components/hover-reveal';
 import { Screen } from '@/components/screen';
+import { webScrollContent } from '@/constants/layout';
 import { useIsWideScreen } from '@/hooks/use-responsive';
 import { monthKey } from '@/lib/date';
 import { activeRows, monthRemainingBudget, monthSummary, yearSummary } from '@/lib/ledger/selectors';
@@ -28,8 +29,12 @@ export default function MonthView() {
   const isWide = useIsWideScreen();
 
   return (
-    <Screen>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 64 }}>
+    <Screen webFull>
+      <ScrollView
+        contentContainerStyle={[
+          { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 64 },
+          webScrollContent,
+        ]}>
         {isWide ? (
           <View>
             <AppHeader title={`${y} Ledger`} subtitle="연간 요약 및 월별 상세" size="md" />
@@ -99,7 +104,8 @@ export default function MonthView() {
 /**
  * Rich month card, shared by web and native (ported from the original web): serif month name +
  * faint "N월" badge, and 수입 / 지출 / 잔여 예산 for months with records — otherwise a soft
- * "아직 기록이 없습니다". A fixed minHeight keeps every card the same size. HoverReveal only shows
+ * "아직 기록이 없습니다". minHeight is sized to clear the taller data card (수입/지출/잔여 예산), so an
+ * empty card and a data card in the same row render at the same height. HoverReveal only shows
  * on web: touch has no hover, so `hovered` stays false on native and the overlay never appears.
  */
 function MonthCard({
@@ -125,7 +131,7 @@ function MonthCard({
       onPress={onPress}
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
-      style={{ minHeight: 186 }}
+      style={{ minHeight: 200 }}
       className="w-full overflow-hidden rounded-2xl border border-line bg-white/60 px-5 py-5 active:opacity-60">
       <View className="flex-row items-start justify-between">
         <Text className="text-3xl text-ink font-serif">{abbr}</Text>

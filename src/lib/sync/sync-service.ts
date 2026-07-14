@@ -110,13 +110,15 @@ async function run(): Promise<boolean> {
     if (__DEV__) console.log('[sync] ✅ synced');
     return true;
   } catch (err) {
-    const message =
-      err instanceof DriveAuthError
-        ? err.message
-        : err instanceof Error
-          ? err.message
-          : '동기화에 실패했어요. 잠시 후 다시 시도할게요.';
+    // No Drive permission (never granted, or revoked) → a calm "needs permission" state, NOT a scary
+    // "sync failed". Everything still works locally; the user simply hasn't connected Drive yet.
+    if (err instanceof DriveAuthError) {
+      useSyncStore.getState().update({ status: 'unauthorized', error: 'Google Drive 권한이 필요해요.' });
+      if (__DEV__) console.warn('[sync] unauthorized (no Drive permission):', err);
+      return false;
+    }
     // Local data is untouched — surface softly and let the next trigger retry.
+    const message = err instanceof Error ? err.message : '동기화에 실패했어요. 잠시 후 다시 시도할게요.';
     useSyncStore.getState().update({ status: 'error', error: message });
     if (__DEV__) console.warn('[sync] failed:', err);
     return false;

@@ -64,11 +64,13 @@ export default function SettingsView() {
   const syncSubtitle =
     syncStatus === 'error'
       ? (syncError ?? '동기화에 실패했어요.')
-      : syncStatus === 'syncing'
-        ? '기록을 동기화하고 있어요…'
-        : syncStatus === 'synced'
-          ? '기록이 Drive에 안전하게 보관됐어요.'
-          : '앱을 켜면 자동으로 동기화돼요.';
+      : syncStatus === 'unauthorized'
+        ? 'Google Drive 권한이 필요해요. 다시 로그인하면 연결돼요.'
+        : syncStatus === 'syncing'
+          ? '기록을 동기화하고 있어요…'
+          : syncStatus === 'synced'
+            ? '기록이 Drive에 안전하게 보관됐어요.'
+            : '앱을 켜면 자동으로 동기화돼요.';
 
   return (
     <Screen webFull>

@@ -33,5 +33,17 @@ export function SyncIndicator() {
     );
   }
 
+  // Drive permission not granted — a calm "needs permission" chip (muted, not the red error tone).
+  if (status === 'unauthorized') {
+    return (
+      <View className="flex-row items-center gap-1.5 rounded-full bg-fill px-2.5 py-1">
+        <View className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: Palette.muted }} />
+        <Text className="text-[10px] uppercase tracking-wider text-muted font-sans-semibold">
+          Drive 권한 필요
+        </Text>
+      </View>
+    );
+  }
+
   return null;
 }

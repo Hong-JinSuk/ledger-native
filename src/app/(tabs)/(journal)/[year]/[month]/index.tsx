@@ -1,7 +1,17 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react-native';
+import { Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  Animated,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { AmountStat } from '@/components/amount-stat';
 import { AppHeader } from '@/components/app-header';
@@ -12,6 +22,7 @@ import { EmptyState } from '@/components/empty-state';
 import { FadeIn } from '@/components/fade-in';
 import { RecordDrawer, type RecordDrawerRef } from '@/components/record-drawer';
 import { Screen } from '@/components/screen';
+import { webScrollContent } from '@/constants/layout';
 import { Palette } from '@/constants/palette';
 import {
   currentMonthKey,
@@ -21,7 +32,7 @@ import {
   monthKey,
   weekdayLabel,
 } from '@/lib/date';
-import { getMonthlyBudget, monthFixedTotal } from '@/lib/ledger/budget';
+import { isMonthConfigured, monthFixedTotal } from '@/lib/ledger/budget';
 import {
   activeRows,
   groupByDay,
@@ -49,6 +60,7 @@ export default function SpreadsheetView() {
   const categories = useLedgerStore((s) => s.categories);
   const settings = useLedgerStore((s) => s.settings);
   const deleteMonth = useLedgerStore((s) => s.deleteMonth);
+  const resetMonthSetup = useLedgerStore((s) => s.resetMonthSetup);
   const confirm = useConfirm();
   const router = useRouter();
 
@@ -58,6 +70,24 @@ export default function SpreadsheetView() {
 
   const drawerRef = useRef<RecordDrawerRef>(null);
   const budgetRef = useRef<BudgetDrawerRef>(null);
+
+  // Scroll-reveal summary bar: once scrolled past the budget card, a compact "남은 예산" bar animates in at
+  // the top (mirrors the welcome page header's scroll-reveal). The ref gates redundant state churn so the
+  // handler only re-renders on the actual show↔hide flip, not every scroll frame.
+  const [stickyShown, setStickyShown] = useState(false);
+  const stickyAnim = useRef(new Animated.Value(0)).current;
+  const stickyShownRef = useRef(false);
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const shouldShow = e.nativeEvent.contentOffset.y > 180;
+    if (shouldShow === stickyShownRef.current) return;
+    stickyShownRef.current = shouldShow;
+    setStickyShown(shouldShow);
+    Animated.timing(stickyAnim, {
+      toValue: shouldShow ? 1 : 0,
+      duration: 200,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  };
   // `day` is optional; the `typeof` guard drops any GestureResponderEvent when wired to onPress.
   const openAdd = (day?: number | null) =>
     drawerRef.current?.present(null, typeof day === 'number' ? day : null);
@@ -74,19 +104,30 @@ export default function SpreadsheetView() {
     if (ok) deleteMonth(y, m);
   };
 
-  // First entry of the *current* month with no budget set → gently prompt once.
+  const onResetMonthSetup = async () => {
+    const ok = await confirm({
+      title: `${m}월 설정을 초기화할까요?`,
+      message: '이 달의 예산·고정 지출 설정이 지워지고 "설정 안 됨"으로 돌아가요. 기록은 지워지지 않아요.',
+      confirmLabel: '초기화',
+    });
+    if (ok) resetMonthSetup(y, m);
+  };
+
+  // Entering a month that isn't set up yet → gently prompt to apply the Settings defaults or set it up.
+  // Once per visit (promptedRef). "나중에 하기" just closes it, so re-entering shows it again like the
+  // first time — until the month is actually configured.
+  // ⚠️ Gate ONLY on isMonthConfigured (settings). NEVER add a records/rows.length condition here: an
+  // installment slice (e.g. a July 3-month 할부 spilling into Aug/Sep) — or any record — that lands in an
+  // un-configured month must STILL show this Settings-based setup prompt. Records must not suppress it.
   const promptedRef = useRef(false);
   useEffect(() => {
     if (promptedRef.current) return;
-    const isCurrent = key === currentMonthKey();
-    const noBudget = getMonthlyBudget(settings, y, m) <= 0;
-    const notConfirmed = settings.lastBudgetConfirmation !== currentMonthKey();
-    if (isCurrent && noBudget && notConfirmed) {
+    if (!isMonthConfigured(settings, y, m)) {
       promptedRef.current = true;
       const t = setTimeout(() => budgetRef.current?.present(), 450);
       return () => clearTimeout(t);
     }
-  }, [key, settings, y, m]);
+  }, [settings, y, m]);
 
   // Calendar starts on today (when viewing the current month) or the 1st.
   useEffect(() => {
@@ -119,10 +160,15 @@ export default function SpreadsheetView() {
   );
 
   return (
-    <Screen>
+    <Screen webFull>
       <View className="flex-1">
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 96 }}
+          contentContainerStyle={[
+            { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 96 },
+            webScrollContent,
+          ]}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled">
           <AppHeader
             title={`${y}. ${m}월`}
@@ -169,17 +215,28 @@ export default function SpreadsheetView() {
             </Pressable>
           </FadeIn>
 
-          {/* Edit THIS month's fixed expenses (its frozen snapshot). Settings only seeds new months. */}
+          {/* Edit THIS month's fixed expenses + (once set up) reset the month back to "not set up". */}
           <FadeIn>
-            <Pressable
-              onPress={goToFixed}
-              hitSlop={8}
-              className="mb-5 flex-row items-center gap-1.5 self-start py-1 pr-2 active:opacity-60">
-              <Pencil size={13} color={Palette.muted} strokeWidth={2} />
-              <Text className="text-xs text-muted font-sans-medium">
-                {fixedTotal > 0 ? '이 달 고정 지출 수정' : '이 달 고정 지출 추가'}
-              </Text>
-            </Pressable>
+            <View className="mb-5 flex-row items-center justify-between">
+              <Pressable
+                onPress={goToFixed}
+                hitSlop={8}
+                className="flex-row items-center gap-1.5 py-1 pr-2 active:opacity-60">
+                <Pencil size={13} color={Palette.muted} strokeWidth={2} />
+                <Text className="text-xs text-muted font-sans-medium">
+                  {fixedTotal > 0 ? '이 달 고정 지출 수정' : '이 달 고정 지출 추가'}
+                </Text>
+              </Pressable>
+              {isMonthConfigured(settings, y, m) && (
+                <Pressable
+                  onPress={onResetMonthSetup}
+                  hitSlop={8}
+                  className="flex-row items-center gap-1 py-1 pl-2 active:opacity-60">
+                  <RotateCcw size={12} color={Palette.muted} strokeWidth={2} />
+                  <Text className="text-xs text-muted font-sans-medium">설정 초기화</Text>
+                </Pressable>
+              )}
+            </View>
           </FadeIn>
 
           {/* View toggle */}
@@ -274,6 +331,42 @@ export default function SpreadsheetView() {
           )}
         </ScrollView>
 
+        {/* Scroll-reveal summary bar — slides/fades in at the top once you scroll past the budget card
+            (mirrors the welcome header's scroll-reveal), so the remaining budget stays in view while
+            browsing rows. Full-width paper bg; inner row aligns to the content column (webScrollContent).
+            Tap to edit the budget, like the card. pointerEvents off while hidden so it can't eat taps. */}
+        <Animated.View
+          pointerEvents={stickyShown ? 'auto' : 'none'}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 20,
+            opacity: stickyAnim,
+            transform: [
+              { translateY: stickyAnim.interpolate({ inputRange: [0, 1], outputRange: [-16, 0] }) },
+            ],
+          }}>
+          <Pressable onPress={() => budgetRef.current?.present()}>
+            <View className="border-b border-line" style={{ backgroundColor: Palette.paper }}>
+              <View
+                className="flex-row items-center justify-between px-5 py-3"
+                style={webScrollContent}>
+                <Text className="text-[11px] uppercase tracking-wider text-muted font-sans-semibold">
+                  {m}월 · {remaining !== null ? '남은 예산' : '합계'}
+                </Text>
+                <Text
+                  className={`text-base font-mono-semibold ${
+                    remaining !== null && remaining < 0 ? 'text-expense' : 'text-ink'
+                  }`}>
+                  {formatCurrency(remaining ?? summary.balance, settings.currency)}
+                </Text>
+              </View>
+            </View>
+          </Pressable>
+        </Animated.View>
+
         {/* Add FAB */}
         <Pressable
           onPress={() => openAdd(mode === 'calendar' ? selectedDay : defaultAddDay)}
@@ -330,6 +423,7 @@ function TransactionRow({
     row.type === '수입' ? Palette.income : row.type === '지출' ? Palette.expense : Palette.transfer;
   const amountClass =
     row.type === '수입' ? 'text-income' : row.type === '지출' ? 'text-expense' : 'text-transfer';
+  const isInstallment = (row.installmentCount ?? 0) > 1;
   return (
     <Pressable
       onPress={onPress}
@@ -341,8 +435,12 @@ function TransactionRow({
         <Text className="text-[15px] text-ink font-sans-medium" numberOfLines={1}>
           {row.merchant || row.category || '무제목'}
         </Text>
-        {!!row.category && (
-          <Text className="mt-0.5 text-xs text-muted font-sans">{row.category}</Text>
+        {(isInstallment || !!row.category) && (
+          <Text className="mt-0.5 text-xs text-muted font-sans" numberOfLines={1}>
+            {isInstallment ? `할부 ${row.installmentSeq}/${row.installmentCount}` : ''}
+            {isInstallment && !!row.category ? ' · ' : ''}
+            {row.category ?? ''}
+          </Text>
         )}
       </View>
       <Text className={`text-[15px] font-mono-medium ${amountClass}`}>

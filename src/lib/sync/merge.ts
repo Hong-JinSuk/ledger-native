@@ -119,7 +119,16 @@ function mergeSettings(local: Settings, remote: Settings): Settings {
   const localBudgetTs = local.budgetUpdatedAt ?? '';
   const remoteBudgetTs = remote.budgetUpdatedAt ?? '';
   const budgetFromLocal = localBudgetTs >= remoteBudgetTs;
-  // Remaining scalar fields (currency, lastBudgetConfirmation): local wins; keep the newest updatedAt.
+  // Reset tombstones — a month cleared on either device STAYS cleared (delete wins), so its budget +
+  // snapshot are dropped from the union above instead of being resurrected by the other side. Other
+  // scalar fields (currency): local wins; keep the newest updatedAt.
+  const clearedMonths = [
+    ...new Set([...(local.clearedMonths ?? []), ...(remote.clearedMonths ?? [])]),
+  ];
+  for (const key of clearedMonths) {
+    delete monthlyBudgets[key];
+    delete monthlyFixedExpenses[key];
+  }
   return {
     ...local,
     budget: budgetFromLocal ? local.budget : remote.budget,
@@ -128,6 +137,7 @@ function mergeSettings(local: Settings, remote: Settings): Settings {
     monthlyFixedExpenses,
     fixedExpenses,
     fixedExpenseTypes,
+    clearedMonths,
     updatedAt: maxIso(local.updatedAt, remote.updatedAt),
   };
 }

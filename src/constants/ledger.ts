@@ -3,7 +3,10 @@ import type { Settings } from '@/types/ledger';
 /** AsyncStorage key holding the whole ledger snapshot (single doc → maps to the future Drive file). */
 export const LEDGER_STORAGE_KEY = 'ledger:snapshot:v1';
 
-export const LEDGER_SNAPSHOT_VERSION = 1;
+// v2: 지출 category consolidation (카페/간식 → 식비, 온라인/패션쇼핑 → 쇼핑).
+// v3: drop the redundant 카페/간식 subcategory an interim v2 folded into 식비.
+// v4: 자동차→교통, 내계좌이체→이체, 상여금→급여 (each as a subcategory). See lib/ledger/migrate.
+export const LEDGER_SNAPSHOT_VERSION = 4;
 
 /**
  * Fixed timestamp stamped on all SEEDED default data (categories, initial settings).
@@ -24,6 +27,6 @@ export const DEFAULT_SETTINGS: Settings = {
   fixedExpenseTypes: [...DEFAULT_FIXED_EXPENSE_TYPES],
   fixedExpenses: [],
   monthlyFixedExpenses: {},
-  lastBudgetConfirmation: undefined,
+  clearedMonths: [],
   updatedAt: SEED_TIMESTAMP,
 };

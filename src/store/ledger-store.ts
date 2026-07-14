@@ -4,6 +4,8 @@ import { DEFAULT_CATEGORIES } from '@/constants/categories';
 import { DEFAULT_SETTINGS, LEDGER_SNAPSHOT_VERSION } from '@/constants/ledger';
 import { monthKey } from '@/lib/date';
 import { newId, nowIso } from '@/lib/id';
+import { planInstallmentSlices } from '@/lib/ledger/installment';
+import { migrateLedgerSnapshot } from '@/lib/ledger/migrate';
 import { asyncStorageLedger, type LedgerStorage } from '@/lib/storage/ledger-storage';
 import { mergeLedger, normalizeFixedExpense } from '@/lib/sync/merge';
 import type {
@@ -36,10 +38,9 @@ function persistSnapshot(snapshot: LedgerSnapshot): void {
  * per-month edits off the shared template. Includes tombstones (snapshot case) so merges stay correct.
  */
 function monthSnapshotBase(settings: Settings, key: string): FixedExpense[] {
-  return (
-    settings.monthlyFixedExpenses?.[key] ??
-    settings.fixedExpenses.filter((e) => !e.deleted).map((e) => ({ ...e }))
-  );
+  // A month's OWN snapshot, or empty. The Settings template is never auto-seeded here — only an explicit
+  // "apply defaults" copies it in. So editing a not-yet-set-up month's fixed expenses starts from nothing.
+  return settings.monthlyFixedExpenses?.[key] ?? [];
 }
 
 export interface NewTransactionInput {
@@ -51,6 +52,12 @@ export interface NewTransactionInput {
   merchant?: string;
   amount?: number;
   note?: string;
+}
+
+/** A new installment purchase: a NewTransactionInput whose `amount` is the TOTAL, split over `count` months. */
+export interface NewInstallmentInput extends NewTransactionInput {
+  /** Number of months to split the total across (≥ 2). */
+  count: number;
 }
 
 /** Fields of a transaction that may be edited in place (year/month are locked — see updateTransaction). */
@@ -88,13 +95,42 @@ export interface LedgerState {
   ensureMonthInitialized: (year: number, month: number) => void;
 
   addTransaction: (input: NewTransactionInput) => Transaction;
+  /**
+   * Record an expense split into `input.count` monthly installments — one Transaction per month, linked
+   * by a shared installmentId, each in its own bucket. Writes ONLY to records/years (never Settings), so
+   * a future-month slice can't configure that month or disturb its "set up this month" prompt.
+   */
+  addInstallment: (input: NewInstallmentInput) => void;
   updateTransaction: (year: number, month: number, id: string, patch: TransactionPatch) => void;
   deleteTransaction: (year: number, month: number, id: string) => void;
+  /** Soft-delete every slice of an installment across all its month buckets (removes the whole 할부). */
+  deleteInstallment: (installmentId: string) => void;
+  /**
+   * Edit a whole installment as one unit: re-split `input.total` over `input.count` months from its
+   * ORIGINAL start month (so editing any slice re-derives them all). Existing months are updated in
+   * place (matched by seq → ids stay stable); a shrunk count tombstones dropped months, a grown count
+   * adds new ones. Records/years only — never Settings.
+   */
+  updateInstallment: (
+    installmentId: string,
+    input: {
+      total: number;
+      count: number;
+      day: number | null;
+      type: TransactionType | '';
+      category?: string;
+      merchant?: string;
+      note?: string;
+    },
+  ) => void;
   /** Soft-delete every record in a month (parallels deleteYear, one bucket). */
   deleteMonth: (year: number, month: number) => void;
 
   updateMonthlyBudget: (year: number, month: number, budget: number | null) => void;
-  confirmBudget: (yearMonth: string) => void;
+  /** Set up a month from the Settings defaults: default budget + a frozen COPY of the default fixed expenses. */
+  applyDefaultsToMonth: (year: number, month: number) => void;
+  /** Reset a month back to "not set up": clear its budget + fixed snapshot (tombstoned so it survives sync). */
+  resetMonthSetup: (year: number, month: number) => void;
   updateSettings: (patch: Partial<Settings>) => void;
 
   addFixedExpense: (input: FixedExpenseInput) => FixedExpense;
@@ -139,8 +175,12 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
     settings: DEFAULT_SETTINGS,
 
     hydrate: async () => {
-      const snapshot = await storage.load();
-      if (snapshot) {
+      const stored = await storage.load();
+      if (stored) {
+        // Upgrade an older on-device snapshot to the current shape (e.g. v2 category consolidation)
+        // before it becomes live state. Returns the SAME ref when nothing ran, so we only re-persist
+        // when a migration actually changed something.
+        const snapshot = migrateLedgerSnapshot(stored, nowIso());
         const loaded: Settings = {
           ...DEFAULT_SETTINGS,
           ...snapshot.settings,
@@ -148,26 +188,16 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
           // in-memory expense has id/updatedAt/deleted for the merge.
           fixedExpenses: (snapshot.settings?.fixedExpenses ?? []).map(normalizeFixedExpense),
         };
-        // Migration: months that already have a budget but no frozen snapshot predate per-month freezing.
-        // Freeze them at the current template so their fixed-expense figures stop drifting when the
-        // template later changes. We have no historical template, so today's is the best we can do; only
-        // budgeted months are captured (matching the freeze-on-budget rule).
-        const monthlyFixedExpenses = { ...(loaded.monthlyFixedExpenses ?? {}) };
-        for (const key of Object.keys(loaded.monthlyBudgets ?? {})) {
-          if (!monthlyFixedExpenses[key]) {
-            monthlyFixedExpenses[key] = loaded.fixedExpenses
-              .filter((e) => !e.deleted)
-              .map((e) => ({ ...e }));
-          }
-        }
         set({
           years: snapshot.years?.length ? snapshot.years : [new Date().getFullYear()],
           yearMeta: snapshot.yearMeta ?? {},
           records: snapshot.records ?? {},
           categories: snapshot.categories?.length ? snapshot.categories : DEFAULT_CATEGORIES,
-          settings: { ...loaded, monthlyFixedExpenses },
+          settings: loaded,
           hydrated: true,
         });
+        // Persist the upgraded snapshot so the migration runs once, not on every launch.
+        if (snapshot !== stored) persist();
       } else {
         // First launch: mark hydrated and seed defaults into storage.
         set({ hydrated: true });
@@ -185,9 +215,12 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
           categories: s.categories,
           settings: s.settings,
         };
+        // Upgrade an older Drive file to the current shape before merging, so v1 data (old category
+        // names / retired categories) doesn't slip in un-migrated. Idempotent on already-current files.
+        const migratedIncoming = migrateLedgerSnapshot(incoming, nowIso());
         // Re-merge here (not a blind overwrite): if the user edited during the async pull, those
         // current values win, so an in-flight sync can never clobber fresh local work.
-        const merged = mergeLedger(current, incoming);
+        const merged = mergeLedger(current, migratedIncoming);
         return {
           years: merged.years,
           yearMeta: merged.yearMeta ?? {},
@@ -260,6 +293,53 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
       return tx;
     },
 
+    addInstallment: (input) => {
+      const slices = planInstallmentSlices(
+        input.year,
+        input.month,
+        input.amount ?? 0,
+        input.count,
+        input.day ?? null,
+      );
+      const installmentId = newId();
+      const ts = nowIso();
+      const count = slices.length;
+      set((s) => {
+        const records = { ...s.records };
+        const years = new Set(s.years);
+        const yearMeta = { ...s.yearMeta };
+        for (const slice of slices) {
+          const key = monthKey(slice.year, slice.month);
+          const tx: Transaction = {
+            id: newId(),
+            createdAt: ts,
+            updatedAt: ts,
+            deleted: false,
+            year: slice.year,
+            month: slice.month,
+            day: slice.day,
+            type: input.type ?? '지출',
+            category: input.category ?? '',
+            merchant: input.merchant ?? '',
+            amount: slice.amount,
+            note: input.note ?? '',
+            installmentId,
+            installmentSeq: slice.seq,
+            installmentCount: count,
+          };
+          records[key] = [...(records[key] ?? []), tx];
+          // A later slice can fall in a not-yet-present year (Dec → next Jan). Add the year so the charge
+          // is visible & merges — this touches years/yearMeta only, never a month's budget/fixed setup.
+          if (!years.has(slice.year)) {
+            years.add(slice.year);
+            yearMeta[slice.year] = { updatedAt: ts, deleted: false };
+          }
+        }
+        return { records, years: [...years].sort((a, b) => b - a), yearMeta };
+      });
+      persist();
+    },
+
     updateTransaction: (year, month, id, patch) => {
       const key = monthKey(year, month);
       set((s) => {
@@ -295,6 +375,109 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
       persist();
     },
 
+    deleteInstallment: (installmentId) => {
+      const ts = nowIso();
+      set((s) => {
+        const records = { ...s.records };
+        for (const key of Object.keys(records)) {
+          let touched = false;
+          const next = records[key].map((r) => {
+            if (r.installmentId === installmentId && !r.deleted) {
+              touched = true;
+              // Soft-delete (tombstone) so the deletion survives the Drive merge, like every other delete.
+              return { ...r, deleted: true, updatedAt: ts };
+            }
+            return r;
+          });
+          if (touched) records[key] = next;
+        }
+        return { records };
+      });
+      persist();
+    },
+
+    updateInstallment: (installmentId, input) => {
+      const ts = nowIso();
+      set((s) => {
+        // Anchor on the current FIRST slice so a re-split keeps the original purchase month, no matter
+        // which slice was opened for editing.
+        let first: Transaction | null = null;
+        for (const rows of Object.values(s.records)) {
+          for (const r of rows) {
+            if (r.installmentId !== installmentId || r.deleted) continue;
+            if (!first || (r.installmentSeq ?? 99) < (first.installmentSeq ?? 99)) first = r;
+          }
+        }
+        if (!first) return s;
+
+        const slices = planInstallmentSlices(
+          first.year,
+          first.month,
+          input.total,
+          input.count,
+          input.day,
+        );
+        const count = slices.length;
+        const bySeq = new Map(slices.map((sl) => [sl.seq, sl]));
+        const records = { ...s.records };
+
+        // Update existing slices in place (match by seq → keeps ids stable); tombstone any dropped seq.
+        for (const key of Object.keys(records)) {
+          let touched = false;
+          const next = records[key].map((r) => {
+            if (r.installmentId !== installmentId || r.deleted) return r;
+            touched = true;
+            const sl = bySeq.get(r.installmentSeq ?? -1);
+            if (!sl) return { ...r, deleted: true, updatedAt: ts }; // count shrank → drop this month
+            bySeq.delete(r.installmentSeq ?? -1);
+            return {
+              ...r,
+              amount: sl.amount,
+              day: sl.day,
+              type: input.type || '지출',
+              category: input.category ?? '',
+              merchant: input.merchant ?? '',
+              note: input.note ?? '',
+              installmentCount: count,
+              updatedAt: ts,
+            };
+          });
+          if (touched) records[key] = next;
+        }
+
+        // Seqs still unmatched = months added (count grew) → create fresh slices, same installmentId.
+        const years = new Set(s.years);
+        const yearMeta = { ...s.yearMeta };
+        for (const sl of bySeq.values()) {
+          const key = monthKey(sl.year, sl.month);
+          const tx: Transaction = {
+            id: newId(),
+            createdAt: ts,
+            updatedAt: ts,
+            deleted: false,
+            year: sl.year,
+            month: sl.month,
+            day: sl.day,
+            type: input.type || '지출',
+            category: input.category ?? '',
+            merchant: input.merchant ?? '',
+            amount: sl.amount,
+            note: input.note ?? '',
+            installmentId,
+            installmentSeq: sl.seq,
+            installmentCount: count,
+          };
+          records[key] = [...(records[key] ?? []), tx];
+          if (!years.has(sl.year)) {
+            years.add(sl.year);
+            yearMeta[sl.year] = { updatedAt: ts, deleted: false };
+          }
+        }
+        return { records, years: [...years].sort((a, b) => b - a), yearMeta };
+      });
+      persist();
+    },
+
     deleteMonth: (year, month) => {
       const key = monthKey(year, month);
       set((s) => {
@@ -318,26 +501,61 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
         const monthlyBudgets = { ...s.settings.monthlyBudgets };
         if (budget === null) delete monthlyBudgets[key];
         else monthlyBudgets[key] = budget;
-        // Freeze this month's fixed expenses the first time it gets a budget. Once frozen it's never
-        // re-captured — so editing the Settings template (or re-saving this budget) can't rewrite a past
-        // month. Template edits only reach months not yet frozen (i.e. future months).
-        const monthlyFixedExpenses = { ...s.settings.monthlyFixedExpenses };
-        if (budget !== null && budget > 0 && !monthlyFixedExpenses[key]) {
-          monthlyFixedExpenses[key] = s.settings.fixedExpenses
-            .filter((e) => !e.deleted)
-            .map((e) => ({ ...e }));
-        }
+        // Budget only. Fixed expenses are set up separately (apply-defaults or the per-month editor) —
+        // never auto-frozen from the template here, so a custom budget doesn't pull the template in.
+        // Setting a budget re-configures the month → lift any prior "reset" tombstone.
+        const clearedMonths =
+          budget === null
+            ? s.settings.clearedMonths
+            : (s.settings.clearedMonths ?? []).filter((k) => k !== key);
         return {
-          settings: { ...s.settings, monthlyBudgets, monthlyFixedExpenses, updatedAt: nowIso() },
+          settings: { ...s.settings, monthlyBudgets, clearedMonths, updatedAt: nowIso() },
         };
       });
       persist();
     },
 
-    confirmBudget: (yearMonth) => {
-      set((s) => ({
-        settings: { ...s.settings, lastBudgetConfirmation: yearMonth, updatedAt: nowIso() },
-      }));
+    applyDefaultsToMonth: (year, month) => {
+      set((s) => {
+        const key = monthKey(year, month);
+        const ts = nowIso();
+        return {
+          settings: {
+            ...s.settings,
+            monthlyBudgets: { ...s.settings.monthlyBudgets, [key]: s.settings.budget },
+            // Freeze a COPY of the current default fixed expenses into this month (independent thereafter).
+            monthlyFixedExpenses: {
+              ...s.settings.monthlyFixedExpenses,
+              [key]: s.settings.fixedExpenses.filter((e) => !e.deleted).map((e) => ({ ...e })),
+            },
+            // Setting it up clears any prior reset tombstone for this month.
+            clearedMonths: (s.settings.clearedMonths ?? []).filter((k) => k !== key),
+            updatedAt: ts,
+          },
+        };
+      });
+      persist();
+    },
+
+    resetMonthSetup: (year, month) => {
+      set((s) => {
+        const key = monthKey(year, month);
+        const monthlyBudgets = { ...s.settings.monthlyBudgets };
+        delete monthlyBudgets[key];
+        const monthlyFixedExpenses = { ...s.settings.monthlyFixedExpenses };
+        delete monthlyFixedExpenses[key];
+        const cleared = s.settings.clearedMonths ?? [];
+        return {
+          settings: {
+            ...s.settings,
+            monthlyBudgets,
+            monthlyFixedExpenses,
+            // Tombstone so the clear survives the Drive merge (delete wins over the union resurrect).
+            clearedMonths: cleared.includes(key) ? cleared : [...cleared, key],
+            updatedAt: nowIso(),
+          },
+        };
+      });
       persist();
     },
 

@@ -9,15 +9,16 @@ import { FadeIn } from '@/components/fade-in';
 import { FixedExpenseCard } from '@/components/fixed-expense-card';
 import { FixedExpenseDrawer, type FixedExpenseDrawerRef } from '@/components/fixed-expense-drawer';
 import { Screen } from '@/components/screen';
+import { webScrollContent } from '@/constants/layout';
 import { Palette } from '@/constants/palette';
 import { monthFixedExpenses } from '@/lib/ledger/budget';
 import { useLedgerStore } from '@/store/ledger-store';
 import type { FixedExpense } from '@/types/ledger';
 
 /**
- * Per-month fixed-expense editor. Edits THIS month's frozen snapshot (seeded from the Settings template
- * when the month was first budgeted). Changes here stay on this month — the Settings template is only
- * the starting point for months that haven't begun yet.
+ * Per-month fixed-expense editor. Edits THIS month's own fixed expenses, independent of Settings. A
+ * month starts empty unless the user applied the Settings defaults; anything added here stays on this
+ * month only. The Settings list is just the default offered when a month is first set up.
  */
 export default function MonthFixedExpensesView() {
   const { year, month } = useLocalSearchParams<{ year: string; month: string }>();
@@ -33,10 +34,13 @@ export default function MonthFixedExpensesView() {
   const openEdit = (expense: FixedExpense) => drawerRef.current?.present(expense);
 
   return (
-    <Screen>
+    <Screen webFull>
       <View className="flex-1">
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 64 }}
+          contentContainerStyle={[
+            { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 64 },
+            webScrollContent,
+          ]}
           keyboardShouldPersistTaps="handled">
           <AppHeader
             title={`${m}월 고정 지출`}
