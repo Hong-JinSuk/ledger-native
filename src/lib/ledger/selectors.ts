@@ -181,6 +181,20 @@ export function orderByUsage<T extends { name: string }>(
   });
 }
 
+/**
+ * True when the ledger looks brand-new — no default budget, no (live) fixed expenses, no (live) records.
+ * Drives the first-run welcome (combined with a settled first sync + the local "seen" flag). Short-circuits
+ * on budget so an existing user never pays the full record scan.
+ */
+export function isFreshLedger(settings: Settings, records: Record<string, Transaction[]>): boolean {
+  if (settings.budget !== 0) return false;
+  if (settings.fixedExpenses.some((e) => !e.deleted)) return false;
+  for (const rows of Object.values(records)) {
+    if (rows.some((r) => !r.deleted)) return false;
+  }
+  return true;
+}
+
 /** Case-insensitive substring search over merchant / category / note. */
 export function searchRows(rows: Transaction[], query: string): Transaction[] {
   const q = query.trim().toLowerCase();

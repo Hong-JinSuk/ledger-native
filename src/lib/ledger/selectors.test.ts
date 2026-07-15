@@ -6,6 +6,7 @@ import {
   activeRows,
   categoryUsage,
   groupByDay,
+  isFreshLedger,
   monthRemainingBudget,
   monthSummary,
   orderByUsage,
@@ -221,5 +222,27 @@ describe('orderByUsage', () => {
 
   it('leaves categories with no usage in their original order', () => {
     expect(orderByUsage(cats(['a', 'b', 'c']), {}).map((c) => c.name)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('isFreshLedger (first-run onboarding gate)', () => {
+  it('true when no budget, no fixed expenses, and no live records', () => {
+    expect(isFreshLedger(settings(), {})).toBe(true);
+    expect(isFreshLedger(settings(), { '2026-07': [] })).toBe(true);
+    // A tombstoned-only month still counts as fresh (nothing live).
+    expect(isFreshLedger(settings(), { '2026-07': [mk({ deleted: true, amount: 1000 })] })).toBe(true);
+  });
+
+  it('false once a default budget is set', () => {
+    expect(isFreshLedger(settings({ budget: 100000 }), {})).toBe(false);
+  });
+
+  it('false when a live fixed expense exists — but tombstoned-only stays fresh', () => {
+    expect(isFreshLedger(settings({ fixedExpenses: [fe('a', 5000)] }), {})).toBe(false);
+    expect(isFreshLedger(settings({ fixedExpenses: [{ ...fe('a', 5000), deleted: true }] }), {})).toBe(true);
+  });
+
+  it('false when any live record exists', () => {
+    expect(isFreshLedger(settings(), { '2026-07': [mk({ amount: 1000 })] })).toBe(false);
   });
 });

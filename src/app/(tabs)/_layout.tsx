@@ -3,6 +3,7 @@ import { BarChart2, BookOpen, Settings } from 'lucide-react-native';
 import { View } from 'react-native';
 
 import { MobileTabBar } from '@/components/mobile-tab-bar';
+import { OnboardingGate } from '@/components/onboarding-welcome';
 import { WebTopNav } from '@/components/web-top-nav';
 import { Palette } from '@/constants/palette';
 import { useIsWideScreen } from '@/hooks/use-responsive';
@@ -46,6 +47,10 @@ export default function TabsLayout() {
           }}
         />
       </Tabs>
+
+      {/* First-run welcome overlay. Self-gates (only shows for a brand-new account after the first
+          sync settles); renders null otherwise. Mounted here so it's authed-only and covers all tabs. */}
+      <OnboardingGate />
     </View>
   );
 }

@@ -11,6 +11,10 @@ export const LEDGER_STORAGE_KEY = 'ledger:snapshot:v1';
  */
 export const LEDGER_OWNER_KEY = 'ledger:owner:v1';
 
+/** Whether the first-run welcome setup (default budget + fixed expenses) has been shown on THIS device.
+ *  Local-only UI flag — deliberately not synced (it's per-device chrome, not ledger data). */
+export const ONBOARDING_SEEN_KEY = 'ledger:onboarding-seen:v1';
+
 // v2: 지출 category consolidation (카페/간식 → 식비, 온라인/패션쇼핑 → 쇼핑).
 // v3: drop the redundant 카페/간식 subcategory an interim v2 folded into 식비.
 // v4: 자동차→교통, 내계좌이체→이체, 상여금→급여 (each as a subcategory). See lib/ledger/migrate.

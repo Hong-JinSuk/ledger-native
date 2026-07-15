@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
-import type { NativeSyntheticEvent, TextInputSelectionChangeEventData } from 'react-native';
+import { useRef, useState, type ComponentType } from 'react';
+import { TextInput } from 'react-native';
+import type { NativeSyntheticEvent, TextInputProps, TextInputSelectionChangeEventData } from 'react-native';
 
 import { SheetTextInput } from '@/components/sheet-text-input';
 import { Palette } from '@/constants/palette';
@@ -15,6 +16,9 @@ type Props = {
   onSubmitEditing?: () => void;
   /** Focus on mount (new record opens straight into the amount field). */
   autoFocus?: boolean;
+  /** Render with a plain TextInput instead of the bottom-sheet input — for use OUTSIDE a bottom sheet
+   *  (e.g. the onboarding overlay), where BottomSheetTextInput has no sheet context. */
+  plain?: boolean;
 };
 
 type Sel = { start: number; end: number };
@@ -42,8 +46,11 @@ function caretAfterDigits(formatted: string, digitsLeft: number): number {
  * that many digits in the freshly grouped string — so an inserted/removed comma near the caret can't
  * shove it. The `onSelectionChange` our own edit triggers is skipped once so it can't clobber that.
  */
-export function AmountInput({ value, onChangeValue, onSubmitEditing, autoFocus }: Props) {
+export function AmountInput({ value, onChangeValue, onSubmitEditing, autoFocus, plain }: Props) {
   const [focused, setFocused] = useState(false);
+  // Outside a bottom sheet, BottomSheetTextInput (inside SheetTextInput) has no sheet context — use a
+  // plain TextInput there. Inside sheets (record/budget/fixed drawers) SheetTextInput wires keyboard avoidance.
+  const Input = (plain ? TextInput : SheetTextInput) as ComponentType<TextInputProps>;
   const [sel, setSel] = useState<Sel | undefined>(undefined);
   const prevDisplay = useRef('');
   const skipNextSel = useRef(false);
@@ -51,7 +58,7 @@ export function AmountInput({ value, onChangeValue, onSubmitEditing, autoFocus }
   const display = value ? formatAmount(value) : '';
 
   return (
-    <SheetTextInput
+    <Input
       value={display}
       // Control the caret only while focused; released on blur so the field isn't over-controlled.
       selection={focused ? sel : undefined}
