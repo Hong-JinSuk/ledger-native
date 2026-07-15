@@ -58,7 +58,11 @@ export default function SettingsView() {
       confirmLabel: '로그아웃',
       destructive: false,
     });
-    if (ok) await signOut();
+    if (!ok) return;
+    // Flush any unsynced edits to THIS account's Drive BEFORE dropping its tokens — otherwise a
+    // different account signing in next resets the local mirror before these reached Drive.
+    await syncNow();
+    await signOut();
   };
 
   const syncSubtitle =

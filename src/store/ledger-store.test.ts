@@ -114,3 +114,21 @@ describe('store: installments', () => {
     expect(live('2026-09')).toEqual([]); // September dropped (tombstoned)
   });
 });
+
+describe('store: resetLocal (account switch)', () => {
+  it('wipes records/years/settings back to a fresh install (fresh seed categories, no records)', () => {
+    useLedgerStore.setState({
+      records: { '2026-07': [slice(1, 7, 40000)] },
+      years: [2020, 2026],
+      settings: { ...useLedgerStore.getState().settings, budget: 500000 },
+    });
+
+    useLedgerStore.getState().resetLocal();
+
+    const s = useLedgerStore.getState();
+    expect(s.records).toEqual({});
+    expect(s.settings.budget).toBe(0); // back to DEFAULT_SETTINGS
+    expect(s.years).toEqual([new Date().getFullYear()]);
+    expect(s.categories.length).toBeGreaterThan(0); // reseeded default categories
+  });
+});

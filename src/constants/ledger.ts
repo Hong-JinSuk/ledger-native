@@ -3,6 +3,14 @@ import type { Settings } from '@/types/ledger';
 /** AsyncStorage key holding the whole ledger snapshot (single doc → maps to the future Drive file). */
 export const LEDGER_STORAGE_KEY = 'ledger:snapshot:v1';
 
+/**
+ * AsyncStorage key recording which Google account (Supabase user id) the local snapshot belongs to.
+ * The snapshot store isn't keyed by account, so a second account signing in on the same device/browser
+ * would otherwise merge (and push) the first account's data. Kept OUT of the synced snapshot — a purely
+ * local guard (see sync-service `ensureAccountScope`).
+ */
+export const LEDGER_OWNER_KEY = 'ledger:owner:v1';
+
 // v2: 지출 category consolidation (카페/간식 → 식비, 온라인/패션쇼핑 → 쇼핑).
 // v3: drop the redundant 카페/간식 subcategory an interim v2 folded into 식비.
 // v4: 자동차→교통, 내계좌이체→이체, 상여금→급여 (each as a subcategory). See lib/ledger/migrate.

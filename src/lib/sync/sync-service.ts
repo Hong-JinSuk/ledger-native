@@ -7,6 +7,7 @@ import {
   statLedgerFile,
   writeLedgerFile,
 } from '@/lib/sync/drive-api';
+import { loadLedgerOwner, saveLedgerOwner } from '@/lib/storage/ledger-storage';
 import { mergeLedger } from '@/lib/sync/merge';
 import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
@@ -57,6 +58,31 @@ let lastPushedRev = -1;
 let lastRemoteModifiedTime: string | null = null;
 
 let inFlight: Promise<void> | null = null;
+
+/**
+ * Scope the local mirror to a Google account BEFORE syncing. The snapshot store + AsyncStorage are a
+ * single per-device store (not keyed by account), so without this a second account signing in on the
+ * same device/browser would merge — and push — the first account's data into the second's Drive.
+ *
+ *  - Same account as last time → keep local untouched (local-first preserved).
+ *  - A DIFFERENT account → reset local to a fresh install and clear the session sync memory, so the
+ *    next run reconciles THIS account's own Drive from scratch. The previous account's data stays in
+ *    its own Drive (and returns if it signs in again); its not-yet-pushed edits are flushed at logout.
+ *  - No owner recorded yet (existing install / first login) → adopt the current account as the owner.
+ *
+ * Call once when a session becomes available, before {@link syncNow}.
+ */
+export async function ensureAccountScope(userId: string): Promise<void> {
+  const owner = await loadLedgerOwner();
+  if (owner === userId) return; // same account — nothing to do
+  if (owner && owner !== userId) {
+    useLedgerStore.getState().resetLocal();
+    // Forget the previous account's remote/push markers so B's Drive is pulled + pushed from scratch.
+    lastRemoteModifiedTime = null;
+    lastPushedRev = -1;
+  }
+  await saveLedgerOwner(userId);
+}
 
 /** The current in-memory ledger as a snapshot — the newest local work / source of truth. */
 function localSnapshot(): LedgerSnapshot {

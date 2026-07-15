@@ -15,7 +15,7 @@ import { ConfirmProvider } from '@/components/confirm-dialog';
 import { Toaster } from '@/components/toast';
 import { FONTS_TO_LOAD } from '@/constants/fonts';
 import { Palette } from '@/constants/palette';
-import { syncNow } from '@/lib/sync/sync-service';
+import { ensureAccountScope, syncNow } from '@/lib/sync/sync-service';
 import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
 
@@ -50,11 +50,22 @@ export default function RootLayout() {
   // to the foreground. syncNow coalesces concurrent calls; failures never touch local data.
   useEffect(() => {
     if (!ready || !session) return;
-    void syncNow();
+    const userId = session.user.id;
+    let active = true;
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void syncNow();
     });
-    return () => sub.remove();
+    // Scope the local mirror to this account BEFORE the first sync — a different Google account on the
+    // same device/browser resets local (its data stays safe in the previous account's Drive) so the two
+    // never bleed together. Same account keeps its local-first data untouched.
+    void (async () => {
+      await ensureAccountScope(userId);
+      if (active) void syncNow();
+    })();
+    return () => {
+      active = false;
+      sub.remove();
+    };
   }, [ready, session]);
 
   if (!ready) {

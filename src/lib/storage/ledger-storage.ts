@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { LEDGER_STORAGE_KEY } from '@/constants/ledger';
+import { LEDGER_OWNER_KEY, LEDGER_STORAGE_KEY } from '@/constants/ledger';
 import type { LedgerSnapshot } from '@/types/ledger';
 
 /**
@@ -33,3 +33,16 @@ export const asyncStorageLedger: LedgerStorage = {
     await AsyncStorage.removeItem(LEDGER_STORAGE_KEY);
   },
 };
+
+/**
+ * The Google account (Supabase user id) the local snapshot currently belongs to, or null if never
+ * recorded. Kept OUT of the synced snapshot — a purely local guard so one account's data can't leak
+ * into another's on a shared device/browser (see sync-service `ensureAccountScope`).
+ */
+export async function loadLedgerOwner(): Promise<string | null> {
+  return AsyncStorage.getItem(LEDGER_OWNER_KEY);
+}
+
+export async function saveLedgerOwner(userId: string): Promise<void> {
+  await AsyncStorage.setItem(LEDGER_OWNER_KEY, userId);
+}

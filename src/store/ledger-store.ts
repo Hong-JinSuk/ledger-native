@@ -89,6 +89,12 @@ export interface LedgerState {
   hydrate: () => Promise<void>;
   /** Merge a Drive snapshot into local state (re-merged against current edits, so nothing is clobbered). */
   applySyncedSnapshot: (incoming: LedgerSnapshot) => void;
+  /**
+   * Wipe local state back to a fresh install (fresh seed categories/settings, no records). Used when a
+   * DIFFERENT Google account signs in on this device (see sync-service `ensureAccountScope`) so accounts
+   * never bleed together — the previous account's data stays safe in its own Drive.
+   */
+  resetLocal: () => void;
 
   addYear: (year: number) => void;
   deleteYear: (year: number) => void;
@@ -229,6 +235,20 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
           settings: merged.settings,
         };
       });
+      persist();
+    },
+
+    resetLocal: () => {
+      // Back to a first-launch state (same shape as the store's initial values). hydrated stays true —
+      // we're already past boot; this is an account switch, not a reload.
+      set({
+        years: [new Date().getFullYear()],
+        yearMeta: {},
+        records: {},
+        categories: DEFAULT_CATEGORIES,
+        settings: DEFAULT_SETTINGS,
+      });
+      // Overwrite the on-device mirror so it reflects "empty for the new account" before the pull.
       persist();
     },
 
