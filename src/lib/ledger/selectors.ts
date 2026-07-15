@@ -1,4 +1,4 @@
-import type { Settings, Transaction } from '@/types/ledger';
+import type { Settings, Transaction, TransactionType } from '@/types/ledger';
 import { monthKey } from '@/lib/date';
 import { getMonthlyBudget, getYearlyBudget, monthFixedTotal } from '@/lib/ledger/budget';
 
@@ -102,6 +102,82 @@ export function sortRowsByDayDesc(rows: Transaction[]): Transaction[] {
   return [...rows].sort((a, b) => {
     const dayDiff = (b.day ?? 0) - (a.day ?? 0);
     return dayDiff !== 0 ? dayDiff : a.id.localeCompare(b.id);
+  });
+}
+
+/** How many calendar months (including the current one) count as "recent" for category ordering. */
+export const RECENT_USAGE_MONTHS = 3;
+
+/** Per-category usage split into a recent window vs all-time — the two keys the drawer sorts by. */
+export interface CategoryUsageStat {
+  /** Uses within the last {@link RECENT_USAGE_MONTHS} calendar months (incl. the current month). */
+  recent: number;
+  /** Uses across all history — the tiebreak when recent counts are equal. */
+  total: number;
+}
+
+/** The `YYYY-MM` keys for the recent window ending at (and including) `year`-`month`. */
+function recentMonthKeys(year: number, month: number, count: number): Set<string> {
+  const keys = new Set<string>();
+  let y = year;
+  let m = month;
+  for (let i = 0; i < count; i += 1) {
+    keys.add(monthKey(y, m));
+    m -= 1;
+    if (m < 1) {
+      m = 12;
+      y -= 1;
+    }
+  }
+  return keys;
+}
+
+/**
+ * Per-type, per-category usage from the user's own history — powers the record drawer's "most-used
+ * first" order. Each category gets a {@link CategoryUsageStat}: `recent` (uses in the last
+ * {@link RECENT_USAGE_MONTHS} months, so shifting habits float up) and `total` (all-time, the
+ * tiebreak). `now` is the reference month for the recent window. An installment (할부) counts once
+ * (its first slice) so one N-month purchase doesn't outweigh N separate buys.
+ */
+export function categoryUsage(
+  records: Record<string, Transaction[]>,
+  now: { year: number; month: number },
+): Record<TransactionType, Record<string, CategoryUsageStat>> {
+  const recentKeys = recentMonthKeys(now.year, now.month, RECENT_USAGE_MONTHS);
+  const usage: Record<TransactionType, Record<string, CategoryUsageStat>> = {
+    수입: {},
+    지출: {},
+    이체: {},
+  };
+  for (const [key, rows] of Object.entries(records)) {
+    const isRecent = recentKeys.has(key);
+    for (const r of rows) {
+      if (r.deleted || !r.type || !r.category) continue;
+      if (r.installmentSeq && r.installmentSeq > 1) continue; // an installment counts once (first slice)
+      const bucket = usage[r.type];
+      const stat = (bucket[r.category] ??= { recent: 0, total: 0 });
+      stat.total += 1;
+      if (isRecent) stat.recent += 1;
+    }
+  }
+  return usage;
+}
+
+/**
+ * Order categories most-used-first: recent-window count, then all-time count, then the input order
+ * (stable) so ties keep the seed order and unused categories stay put at the end. Pure — the drawer
+ * feeds it the already-filtered list for the selected type.
+ */
+export function orderByUsage<T extends { name: string }>(
+  items: T[],
+  usage: Record<string, CategoryUsageStat>,
+): T[] {
+  return [...items].sort((a, b) => {
+    const sa = usage[a.name];
+    const sb = usage[b.name];
+    const recentDiff = (sb?.recent ?? 0) - (sa?.recent ?? 0);
+    if (recentDiff !== 0) return recentDiff;
+    return (sb?.total ?? 0) - (sa?.total ?? 0);
   });
 }
 

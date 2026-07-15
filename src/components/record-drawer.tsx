@@ -14,6 +14,7 @@ import { Palette } from '@/constants/palette';
 import { animateNextLayout } from '@/lib/animate-next-layout';
 import { daysInMonth } from '@/lib/date';
 import { summarizeInstallment } from '@/lib/ledger/installment';
+import { categoryUsage, orderByUsage } from '@/lib/ledger/selectors';
 import { formatAmount } from '@/lib/money';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
 import { transactionFormSchema, type TransactionFormValues } from '@/schemas/transaction';
@@ -67,6 +68,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   const [installmentAnchorMonth, setInstallmentAnchorMonth] = useState<number | null>(null);
 
   const categories = useLedgerStore((s) => s.categories);
+  const records = useLedgerStore((s) => s.records);
   const addTransaction = useLedgerStore((s) => s.addTransaction);
   const addInstallment = useLedgerStore((s) => s.addInstallment);
   const updateTransaction = useLedgerStore((s) => s.updateTransaction);
@@ -133,9 +135,20 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
     setInstallmentMonths(n < 1 ? 1 : n);
   };
 
+  // Recent-weighted usage per type from the user's own history — recomputed only when records change.
+  // `now` sets the recent window; the drawer stays mounted so recomputing the date here is cheap.
+  const usageCounts = useMemo(() => {
+    const d = new Date();
+    return categoryUsage(records, { year: d.getFullYear(), month: d.getMonth() + 1 });
+  }, [records]);
+  // Most-used first (recent 3 months, then all-time); ties keep the seed order, so unused ones stay last.
   const visibleCategories = useMemo(
-    () => categories.filter((c) => !c.deleted && c.type === selectedType),
-    [categories, selectedType],
+    () =>
+      orderByUsage(
+        categories.filter((c) => !c.deleted && c.type === selectedType),
+        usageCounts[selectedType],
+      ),
+    [categories, selectedType, usageCounts],
   );
 
   const days = useMemo(
@@ -273,6 +286,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
                   value={field.value}
                   onChangeValue={field.onChange}
                   onSubmitEditing={handleSubmit(onSubmit)}
+                  autoFocus={!isEdit}
                 />
               )}
             />

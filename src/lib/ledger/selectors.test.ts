@@ -4,9 +4,11 @@ import type { FixedExpense, Settings, Transaction } from '@/types/ledger';
 import { isMonthConfigured } from '@/lib/ledger/budget';
 import {
   activeRows,
+  categoryUsage,
   groupByDay,
   monthRemainingBudget,
   monthSummary,
+  orderByUsage,
   searchRows,
   sortRowsByDayDesc,
   totalExpense,
@@ -27,6 +29,7 @@ function mk(p: Partial<Transaction>): Transaction {
     merchant: p.merchant,
     amount: p.amount ?? 0,
     note: p.note ?? '',
+    installmentSeq: p.installmentSeq,
   };
 }
 
@@ -136,5 +139,87 @@ describe('selectors', () => {
     expect(searchRows(rows, '커피')).toHaveLength(1);
     expect(searchRows(rows, '스타')).toHaveLength(1);
     expect(searchRows(rows, '')).toHaveLength(3);
+  });
+});
+
+describe('categoryUsage', () => {
+  const NOW = { year: 2026, month: 7 }; // recent window = 2026-05, 06, 07
+
+  it('splits per-type category counts into recent-window vs all-time', () => {
+    const records = {
+      '2026-07': [
+        mk({ id: 'a', type: '지출', category: '식비' }),
+        mk({ id: 'b', type: '지출', category: '식비' }),
+        mk({ id: 'c', type: '지출', category: '교통' }),
+        mk({ id: 'd', type: '수입', category: '급여' }),
+      ],
+      '2026-05': [mk({ id: 'e', type: '지출', category: '식비' })], // recent
+      '2026-02': [
+        mk({ id: 'f', type: '지출', category: '교통' }),
+        mk({ id: 'g', type: '지출', category: '교통' }),
+      ], // old → total only
+      '2026-08': [mk({ id: 'h', type: '지출', category: '식비' })], // future → total only
+    };
+    const usage = categoryUsage(records, NOW);
+    expect(usage['지출']['식비']).toEqual({ recent: 3, total: 4 }); // 07×2 + 05×1 recent; +08×1 total
+    expect(usage['지출']['교통']).toEqual({ recent: 1, total: 3 }); // 07×1 recent; +02×2 total
+    expect(usage['수입']).toEqual({ 급여: { recent: 1, total: 1 } });
+    expect(usage['이체']).toEqual({});
+  });
+
+  it('ignores soft-deleted rows and rows with no type/category', () => {
+    const records = {
+      '2026-07': [
+        mk({ id: 'a', type: '지출', category: '식비' }),
+        mk({ id: 'b', type: '지출', category: '식비', deleted: true }),
+        mk({ id: 'c', type: '', category: '식비' }),
+        mk({ id: 'd', type: '지출', category: undefined }),
+      ],
+    };
+    expect(categoryUsage(records, NOW)['지출']).toEqual({ 식비: { recent: 1, total: 1 } });
+  });
+
+  it('counts an installment once (first slice only), not once per month', () => {
+    const records = {
+      '2026-07': [mk({ id: 'i1', type: '지출', category: '쇼핑', installmentSeq: 1 })],
+      '2026-08': [mk({ id: 'i2', type: '지출', category: '쇼핑', installmentSeq: 2 })],
+      '2026-09': [mk({ id: 'i3', type: '지출', category: '쇼핑', installmentSeq: 3 })],
+    };
+    expect(categoryUsage(records, NOW)['지출']).toEqual({ 쇼핑: { recent: 1, total: 1 } });
+  });
+});
+
+describe('orderByUsage', () => {
+  const cats = (names: string[]) => names.map((name) => ({ name }));
+
+  it('sorts by recent count first — a lately-used category beats an old high-total one', () => {
+    const usage = {
+      배달: { recent: 30, total: 45 },
+      식비: { recent: 18, total: 300 },
+      교통: { recent: 3, total: 210 },
+    };
+    expect(orderByUsage(cats(['식비', '교통', '배달']), usage).map((c) => c.name)).toEqual([
+      '배달',
+      '식비',
+      '교통',
+    ]);
+  });
+
+  it('breaks a recent tie by all-time, then keeps input (seed) order when both tie', () => {
+    const usage = {
+      식비: { recent: 0, total: 50 },
+      교통: { recent: 0, total: 90 },
+      // 쇼핑·뷰티: no usage → 0/0, stay in input order after the used ones
+    };
+    expect(orderByUsage(cats(['식비', '교통', '쇼핑', '뷰티']), usage).map((c) => c.name)).toEqual([
+      '교통',
+      '식비',
+      '쇼핑',
+      '뷰티',
+    ]);
+  });
+
+  it('leaves categories with no usage in their original order', () => {
+    expect(orderByUsage(cats(['a', 'b', 'c']), {}).map((c) => c.name)).toEqual(['a', 'b', 'c']);
   });
 });

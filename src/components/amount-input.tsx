@@ -13,6 +13,8 @@ type Props = {
   onChangeValue: (next: number) => void;
   /** Enter / return key → save. */
   onSubmitEditing?: () => void;
+  /** Focus on mount (new record opens straight into the amount field). */
+  autoFocus?: boolean;
 };
 
 type Sel = { start: number; end: number };
@@ -40,7 +42,7 @@ function caretAfterDigits(formatted: string, digitsLeft: number): number {
  * that many digits in the freshly grouped string — so an inserted/removed comma near the caret can't
  * shove it. The `onSelectionChange` our own edit triggers is skipped once so it can't clobber that.
  */
-export function AmountInput({ value, onChangeValue, onSubmitEditing }: Props) {
+export function AmountInput({ value, onChangeValue, onSubmitEditing, autoFocus }: Props) {
   const [focused, setFocused] = useState(false);
   const [sel, setSel] = useState<Sel | undefined>(undefined);
   const prevDisplay = useRef('');
@@ -91,6 +93,7 @@ export function AmountInput({ value, onChangeValue, onSubmitEditing }: Props) {
         onChangeValue(next);
       }}
       onSubmitEditing={onSubmitEditing}
+      autoFocus={autoFocus}
       keyboardType="number-pad"
       placeholder="0"
       placeholderTextColor={Palette.line}
