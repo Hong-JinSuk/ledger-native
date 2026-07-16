@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Trash2 } from 'lucide-react-native';
+import { CalendarDays, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react-native';
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -12,7 +12,7 @@ import { SheetTextInput } from '@/components/sheet-text-input';
 import { useToast } from '@/components/toast';
 import { Palette } from '@/constants/palette';
 import { animateNextLayout } from '@/lib/animate-next-layout';
-import { daysInMonth } from '@/lib/date';
+import { daysInMonth, firstWeekdayOfMonth, isToday } from '@/lib/date';
 import { summarizeInstallment } from '@/lib/ledger/installment';
 import { categoryUsage, orderByUsage } from '@/lib/ledger/selectors';
 import { formatAmount } from '@/lib/money';
@@ -66,12 +66,19 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   const [installmentMonths, setInstallmentMonths] = useState(1);
   const [monthsText, setMonthsText] = useState('');
   const [installmentAnchorMonth, setInstallmentAnchorMonth] = useState<number | null>(null);
+  // Date picker disclosure — the "M월 D일" badge toggles a calendar open right below it.
+  const [dayPickerOpen, setDayPickerOpen] = useState(false);
+  // The calendar's browsing month (‹ › nav) vs the record's target month (set when a day is tapped).
+  // A record can be filed into another month by navigating there and picking a day — merge re-buckets.
+  const [view, setView] = useState<{ year: number; month: number }>({ year, month });
+  const [target, setTarget] = useState<{ year: number; month: number }>({ year, month });
 
   const categories = useLedgerStore((s) => s.categories);
   const records = useLedgerStore((s) => s.records);
   const addTransaction = useLedgerStore((s) => s.addTransaction);
   const addInstallment = useLedgerStore((s) => s.addInstallment);
   const updateTransaction = useLedgerStore((s) => s.updateTransaction);
+  const moveTransaction = useLedgerStore((s) => s.moveTransaction);
   const updateInstallment = useLedgerStore((s) => s.updateInstallment);
   const deleteTransaction = useLedgerStore((s) => s.deleteTransaction);
   const deleteInstallment = useLedgerStore((s) => s.deleteInstallment);
@@ -89,6 +96,10 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
       setTransaction(tx);
       // Reset on every open so a fresh add never carries over the previous entry.
       reset(toDefaults(tx, defaultDay));
+      setDayPickerOpen(false); // always start with the calendar collapsed
+      // Calendar starts on the row's own month (edit) or this screen's month (add).
+      setView({ year: tx?.year ?? year, month: tx?.month ?? month });
+      setTarget({ year: tx?.year ?? year, month: tx?.month ?? month });
       if (tx?.installmentId) {
         // Editing an installment → treat it as ONE unit: prefill the TOTAL (sum of its slices) and its
         // month count, anchored to the original first month. Re-saving re-splits — which also heals a
@@ -119,7 +130,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   const perMonth = installmentMonths > 1 ? Math.floor(amountValue / installmentMonths) : 0;
   const firstMonthExtra = installmentMonths > 1 ? amountValue - perMonth * installmentMonths : 0;
   // The month the split starts from: the installment's original first month when editing, else this screen's.
-  const previewStartMonth = installmentAnchorMonth ?? month;
+  const previewStartMonth = installmentAnchorMonth ?? target.month;
 
   // Pick a preset (일시불 / 2·3·6·12개월) — mirror the choice into the "직접 입력" field so both stay in sync.
   const pickInstallmentMonths = (months: number) => {
@@ -133,6 +144,12 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
     setMonthsText(digits);
     const n = digits ? parseInt(digits, 10) : 1;
     setInstallmentMonths(n < 1 ? 1 : n);
+  };
+
+  // ‹ › nav moves only the browsing month; the record's month changes when a day is tapped (onSelect).
+  const shiftMonth = (delta: number) => {
+    const idx = view.year * 12 + (view.month - 1) + delta;
+    setView({ year: Math.floor(idx / 12), month: (idx % 12) + 1 });
   };
 
   // Recent-weighted usage per type from the user's own history — recomputed only when records change.
@@ -149,11 +166,6 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
         usageCounts[selectedType],
       ),
     [categories, selectedType, usageCounts],
-  );
-
-  const days = useMemo(
-    () => Array.from({ length: daysInMonth(year, month) }, (_, i) => i + 1),
-    [year, month],
   );
 
   const onSubmit = useCallback(
@@ -173,21 +185,35 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
             note: values.note,
           });
         } else {
-          updateTransaction(year, month, transaction.id, {
+          const patch = {
             type: values.type,
             amount: values.amount,
             category: values.category ?? '',
             merchant: values.merchant ?? '',
             day: values.day,
             note: values.note ?? '',
-          });
+          };
+          // A changed target month moves the record to the new bucket (sync-safe re-bucketing); an
+          // unchanged month is a plain in-place edit.
+          if (target.year !== transaction.year || target.month !== transaction.month) {
+            moveTransaction(
+              transaction.year,
+              transaction.month,
+              transaction.id,
+              target.year,
+              target.month,
+              patch,
+            );
+          } else {
+            updateTransaction(transaction.year, transaction.month, transaction.id, patch);
+          }
         }
       } else if (values.type === '지출' && installmentMonths > 1) {
         // 할부: split the total into one record per month (spilling into future months). Records only —
         // never Settings — so the setup of any month a slice lands in stays untouched.
         addInstallment({
-          year,
-          month,
+          year: target.year,
+          month: target.month,
           type: values.type,
           amount: values.amount,
           category: values.category,
@@ -198,8 +224,8 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
         });
       } else {
         addTransaction({
-          year,
-          month,
+          year: target.year,
+          month: target.month,
           type: values.type,
           amount: values.amount,
           category: values.category,
@@ -209,8 +235,19 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
         });
       }
       const installmentAdded = !isEdit && values.type === '지출' && installmentMonths > 1;
+      // Filed into a different month than this screen? Say so, so the record doesn't feel "lost"
+      // (it won't show in the current month's list).
+      const otherMonth = target.year !== year || target.month !== month;
       toast.success(
-        isEdit ? '수정했어요' : installmentAdded ? `${installmentMonths}개월 할부로 기록했어요` : '기록했어요',
+        isEdit
+          ? otherMonth
+            ? `${target.month}월로 옮겼어요`
+            : '수정했어요'
+          : installmentAdded
+            ? `${installmentMonths}개월 할부로 기록했어요`
+            : otherMonth
+              ? `${target.month}월에 기록했어요`
+              : '기록했어요',
       );
       sheetRef.current?.dismiss();
     },
@@ -218,10 +255,12 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
       isEdit,
       transaction,
       updateTransaction,
+      moveTransaction,
       updateInstallment,
       addTransaction,
       addInstallment,
       installmentMonths,
+      target,
       year,
       month,
       toast,
@@ -415,25 +454,75 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
           />
         </Field>
 
-        {/* Day */}
+        {/* Date — a "M월 D일" badge that discloses a calendar to pick the day (no long chip strip). */}
         <Field label="날짜">
           <Controller
             control={control}
             name="day"
             render={({ field }) => (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View className="flex-row gap-1.5">
-                  <DayChip label="미정" active={field.value == null} onPress={() => field.onChange(null)} />
-                  {days.map((d) => (
-                    <DayChip
-                      key={d}
-                      label={String(d)}
-                      active={field.value === d}
-                      onPress={() => field.onChange(d)}
+              <View style={{ position: 'relative' }}>
+                <Pressable
+                  onPress={() => {
+                    const opening = !dayPickerOpen;
+                    if (opening) setView({ ...target }); // reopening jumps back to the selected month
+                    setDayPickerOpen(opening);
+                  }}
+                  className="flex-row items-center gap-2 self-start rounded-full bg-fill px-4 py-2.5 active:opacity-80">
+                  <CalendarDays size={15} color={Palette.muted} />
+                  <Text className="text-sm text-ink font-sans-medium">
+                    {field.value == null
+                      ? target.year !== year || target.month !== month
+                        ? `${target.month}월 · 날짜 미정`
+                        : '날짜 미정'
+                      : `${target.year !== year ? `${target.year}년 ` : ''}${target.month}월 ${field.value}일`}
+                  </Text>
+                </Pressable>
+
+                {/* True popover: absolutely positioned ABOVE the badge, so it floats over the fields
+                    instead of pushing the form down. Floating up also stacks it over the
+                    earlier-painted siblings (거래처 등) with no zIndex fight. */}
+                {dayPickerOpen && (
+                  <View
+                    className="rounded-2xl border border-line bg-paper p-3"
+                    style={{
+                      position: 'absolute',
+                      bottom: '100%',
+                      left: 0,
+                      marginBottom: 8,
+                      zIndex: 50,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 8 },
+                      shadowOpacity: 0.12,
+                      shadowRadius: 20,
+                      elevation: 8,
+                    }}>
+                    <DayPickerCalendar
+                      year={view.year}
+                      month={view.month}
+                      value={
+                        view.year === target.year && view.month === target.month
+                          ? field.value ?? null
+                          : null
+                      }
+                      onSelect={(d) => {
+                        const sameCell =
+                          view.year === target.year &&
+                          view.month === target.month &&
+                          field.value === d;
+                        if (sameCell) {
+                          field.onChange(null); // re-tap the selected day → clear to 미정
+                        } else {
+                          setTarget({ ...view }); // the tapped month becomes the record's month
+                          field.onChange(d);
+                        }
+                        setDayPickerOpen(false);
+                      }}
+                      onPrev={editingInstallment ? undefined : () => shiftMonth(-1)}
+                      onNext={editingInstallment ? undefined : () => shiftMonth(1)}
                     />
-                  ))}
-                </View>
-              </ScrollView>
+                  </View>
+                )}
+              </View>
             )}
           />
         </Field>
@@ -488,23 +577,113 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function DayChip({
-  label,
-  active,
-  onPress,
+/**
+ * Compact month calendar for the record drawer's date field — a native lookalike of the shadcn
+ * calendar (fixed 36px cells, content-width, greyed inert outside days; NOT the real shadcn, which
+ * is web-only). The ‹ › header navigates months so a record can be filed into another month; the
+ * parent decides what a tap means (pick / re-tap to clear / move month). `value` is the selected day
+ * only when the viewed month IS the selected month, so the highlight never bleeds across months.
+ */
+function DayPickerCalendar({
+  year,
+  month,
+  value,
+  onSelect,
+  onPrev,
+  onNext,
 }: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
+  year: number;
+  month: number;
+  value: number | null;
+  onSelect: (day: number) => void;
+  onPrev?: () => void;
+  onNext?: () => void;
 }) {
+  const CELL = 36; // fixed cell size keeps the grid compact instead of stretching to full width
+  const total = daysInMonth(year, month);
+  const leading = firstWeekdayOfMonth(year, month);
+  const prevTotal = daysInMonth(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1);
+  // prev-month tail + this month + next-month head (to finish the last week). Outside days render
+  // dimmed and inert — only this month's days are selectable in a single-month picker.
+  const cells: { day: number; outside: boolean }[] = [
+    ...Array.from({ length: leading }, (_, i) => ({ day: prevTotal - leading + 1 + i, outside: true })),
+    ...Array.from({ length: total }, (_, i) => ({ day: i + 1, outside: false })),
+  ];
+  // Always fill to 6 rows (42 cells) so the calendar's height stays constant across months — the
+  // popover then never grows/shrinks (and jumps) as you navigate ‹ ›. Max leading(6)+31 = 37 < 42.
+  for (let nextDay = 1; cells.length < 42; nextDay++) {
+    cells.push({ day: nextDay, outside: true });
+  }
   return (
-    <Pressable
-      onPress={onPress}
-      className={`min-w-[40px] items-center rounded-full px-3 py-2 ${active ? 'bg-ink' : 'bg-fill'}`}>
-      <Text className={`text-sm font-mono-medium ${active ? 'text-paper' : 'text-muted'}`}>
-        {label}
-      </Text>
-    </Pressable>
+    <View style={{ width: CELL * 7 }}>
+      {/* Month nav — arrows shift the browsing month (hidden for installment edits, which stay put). */}
+      <View className="mb-1.5 h-7 flex-row items-center justify-between">
+        {onPrev ? (
+          <Pressable
+            onPress={onPrev}
+            hitSlop={6}
+            className="h-7 w-7 items-center justify-center rounded-lg active:bg-fill">
+            <ChevronLeft size={17} color={Palette.ink} />
+          </Pressable>
+        ) : (
+          <View className="h-7 w-7" />
+        )}
+        <Text className="text-sm text-ink font-sans-semibold">
+          {year}년 {month}월
+        </Text>
+        {onNext ? (
+          <Pressable
+            onPress={onNext}
+            hitSlop={6}
+            className="h-7 w-7 items-center justify-center rounded-lg active:bg-fill">
+            <ChevronRight size={17} color={Palette.ink} />
+          </Pressable>
+        ) : (
+          <View className="h-7 w-7" />
+        )}
+      </View>
+      <View className="flex-row">
+        {['일', '월', '화', '수', '목', '금', '토'].map((w, i) => (
+          <View key={w} style={{ width: CELL }} className="items-center pb-1.5">
+            <Text
+              className={`text-[11px] font-sans-medium ${i === 0 ? 'text-expense' : 'text-muted'}`}>
+              {w}
+            </Text>
+          </View>
+        ))}
+      </View>
+      <View className="flex-row flex-wrap">
+        {cells.map((c, idx) =>
+          c.outside ? (
+            <View
+              key={idx}
+              style={{ width: CELL, height: CELL }}
+              className="items-center justify-center">
+              <Text className="text-[13px] text-muted font-mono opacity-60">{c.day}</Text>
+            </View>
+          ) : (
+            <View
+              key={idx}
+              style={{ width: CELL, height: CELL }}
+              className="items-center justify-center">
+              <Pressable
+                onPress={() => onSelect(c.day)}
+                className="h-full w-full items-center justify-center active:opacity-60">
+                <View
+                  className={`h-8 w-8 items-center justify-center rounded-lg ${
+                    value === c.day ? 'bg-ink' : isToday(year, month, c.day) ? 'bg-fill' : ''
+                  }`}>
+                  <Text
+                    className={`text-[13px] font-mono ${value === c.day ? 'text-paper' : 'text-ink'}`}>
+                    {c.day}
+                  </Text>
+                </View>
+              </Pressable>
+            </View>
+          ),
+        )}
+      </View>
+    </View>
   );
 }
 

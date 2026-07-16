@@ -132,3 +132,99 @@ describe('store: resetLocal (account switch)', () => {
     expect(s.categories.length).toBeGreaterThan(0); // reseeded default categories
   });
 });
+
+function plain(id: string, month: number): Transaction {
+  return {
+    id,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    deleted: false,
+    year: 2026,
+    month,
+    day: 14,
+    type: '지출',
+    category: '식비',
+    merchant: '카페',
+    amount: 5000,
+    note: '',
+  };
+}
+
+describe('store: moveTransaction (cross-month edit)', () => {
+  beforeEach(() => {
+    useLedgerStore.setState({ records: {}, years: [2026], yearMeta: {} });
+  });
+
+  it('moves Jul→Aug: gone from Jul, in Aug with new year/month, same id/createdAt, bumped updatedAt', () => {
+    useLedgerStore.setState({ records: { '2026-07': [plain('t1', 7)] }, years: [2026], yearMeta: {} });
+    useLedgerStore.getState().moveTransaction(2026, 7, 't1', 2026, 8, {
+      type: '지출',
+      amount: 5000,
+      category: '식비',
+      merchant: '카페',
+      day: 20,
+      note: '',
+    });
+    const s = useLedgerStore.getState();
+    expect(s.records['2026-07']).toEqual([]); // physically removed from the old bucket
+    expect(s.records['2026-08'].map((r) => r.id)).toEqual(['t1']);
+    const moved = s.records['2026-08'][0];
+    expect([moved.year, moved.month, moved.day]).toEqual([2026, 8, 20]);
+    expect(moved.createdAt).toBe('2026-01-01T00:00:00.000Z'); // identity preserved
+    expect(moved.updatedAt).toBe('2026-07-14T00:00:00.000Z'); // bumped (mocked nowIso)
+  });
+
+  it('moving into a not-yet-present year (Dec 2026 → Jan 2027) adds that year', () => {
+    useLedgerStore.setState({ records: { '2026-12': [plain('t1', 12)] }, years: [2026], yearMeta: {} });
+    useLedgerStore.getState().moveTransaction(2026, 12, 't1', 2027, 1, {
+      type: '지출',
+      amount: 5000,
+      category: '식비',
+      merchant: '카페',
+      day: 5,
+      note: '',
+    });
+    const s = useLedgerStore.getState();
+    expect(s.records['2027-01'].map((r) => r.id)).toEqual(['t1']);
+    expect(s.years).toContain(2027);
+    expect(s.yearMeta['2027']).toEqual({ updatedAt: '2026-07-14T00:00:00.000Z', deleted: false });
+  });
+
+  it('is a no-op when the row is not in the source bucket', () => {
+    useLedgerStore.setState({ records: { '2026-07': [plain('t1', 7)] }, years: [2026], yearMeta: {} });
+    useLedgerStore.getState().moveTransaction(2026, 7, 'nope', 2026, 8, {
+      type: '지출',
+      amount: 0,
+      category: '',
+      merchant: '',
+      day: null,
+      note: '',
+    });
+    const s = useLedgerStore.getState();
+    expect(s.records['2026-07'].map((r) => r.id)).toEqual(['t1']);
+    expect(s.records['2026-08']).toBeUndefined();
+  });
+});
+
+describe('store: addTransaction into a new year', () => {
+  beforeEach(() => {
+    useLedgerStore.setState({ records: {}, years: [2026], yearMeta: {} });
+  });
+
+  it('adds the target year when it is not yet present (calendar nav across the year boundary)', () => {
+    useLedgerStore.getState().addTransaction({
+      year: 2027,
+      month: 3,
+      amount: 1000,
+      type: '지출',
+      category: '식비',
+      merchant: '',
+      day: 1,
+      note: '',
+    });
+    const s = useLedgerStore.getState();
+    expect(s.records['2027-03'].length).toBe(1);
+    expect(s.years).toContain(2027);
+    expect(s.yearMeta['2027']?.deleted).toBe(false);
+  });
+});

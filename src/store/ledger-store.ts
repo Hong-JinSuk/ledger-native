@@ -108,6 +108,19 @@ export interface LedgerState {
    */
   addInstallment: (input: NewInstallmentInput) => void;
   updateTransaction: (year: number, month: number, id: string, patch: TransactionPatch) => void;
+  /**
+   * Move a transaction to a different month bucket (an edit that changes its month). Keeps the same
+   * id/createdAt; the merge flattens by id globally and re-buckets by year/month, so it stays
+   * sync-safe — no duplicate, no tombstone (the id is re-homed, not deleted). See mergeRecords.
+   */
+  moveTransaction: (
+    fromYear: number,
+    fromMonth: number,
+    id: string,
+    toYear: number,
+    toMonth: number,
+    patch: TransactionPatch,
+  ) => void;
   deleteTransaction: (year: number, month: number, id: string) => void;
   /** Soft-delete every slice of an installment across all its month buckets (removes the whole 할부). */
   deleteInstallment: (installmentId: string) => void;
@@ -308,7 +321,18 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
         amount: input.amount ?? 0,
         note: input.note ?? '',
       };
-      set((s) => ({ records: { ...s.records, [key]: [...(s.records[key] ?? []), tx] } }));
+      set((s) => {
+        const hasYear = s.years.includes(input.year);
+        return {
+          records: { ...s.records, [key]: [...(s.records[key] ?? []), tx] },
+          // A month chosen via the calendar's nav can land in a year not yet present → add it so the
+          // record is visible & syncs (years/yearMeta only, like addInstallment's cross-year slices).
+          years: hasYear ? s.years : [...s.years, input.year].sort((a, b) => b - a),
+          yearMeta: hasYear
+            ? s.yearMeta
+            : { ...s.yearMeta, [input.year]: { updatedAt: ts, deleted: false } },
+        };
+      });
       persist();
       return tx;
     },
@@ -368,11 +392,40 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
         return {
           records: {
             ...s.records,
-            // year/month/id/createdAt are locked so the record stays in its bucket (merge invariant).
+            // year/month/id/createdAt are locked here so the record stays in its bucket. A month
+            // CHANGE goes through moveTransaction instead (re-bucketing is safe; see mergeRecords).
             [key]: rows.map((r) =>
               r.id === id ? { ...r, ...patch, updatedAt: nowIso() } : r,
             ),
           },
+        };
+      });
+      persist();
+    },
+
+    moveTransaction: (fromYear, fromMonth, id, toYear, toMonth, patch) => {
+      const fromKey = monthKey(fromYear, fromMonth);
+      const toKey = monthKey(toYear, toMonth);
+      const ts = nowIso();
+      set((s) => {
+        const fromRows = s.records[fromKey];
+        const tx = fromRows?.find((r) => r.id === id);
+        if (!fromRows || !tx) return s;
+        // Same id/createdAt, new bucket + edited fields. The merge flattens by id globally and
+        // re-buckets by each row's year/month, so a newer updatedAt supersedes the old-bucket copy on
+        // another device — no duplicate, and no tombstone needed (the id is re-homed, not deleted).
+        const moved: Transaction = { ...tx, ...patch, year: toYear, month: toMonth, updatedAt: ts };
+        const hasYear = s.years.includes(toYear);
+        return {
+          records: {
+            ...s.records,
+            [fromKey]: fromRows.filter((r) => r.id !== id),
+            [toKey]: [...(s.records[toKey] ?? []), moved],
+          },
+          years: hasYear ? s.years : [...s.years, toYear].sort((a, b) => b - a),
+          yearMeta: hasYear
+            ? s.yearMeta
+            : { ...s.yearMeta, [toYear]: { updatedAt: ts, deleted: false } },
         };
       });
       persist();
