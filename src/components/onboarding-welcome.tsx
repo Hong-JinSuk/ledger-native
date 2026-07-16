@@ -85,10 +85,21 @@ function OnboardingWelcome({ onDone }: { onDone: () => void }) {
       style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: Palette.paper, zIndex: 50 }}>
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 28, paddingTop: 40, paddingBottom: 32, flexGrow: 1 }}
+          contentContainerStyle={{ flexGrow: 1, alignItems: 'center' }}
           keyboardShouldPersistTaps="handled">
-          <FadeIn>
-            <Text className="text-4xl text-ink font-serif">환영해요</Text>
+          {/* Compact centered column on wide screens; full-width (with edge padding) on mobile, where
+              width:100% < maxWidth so it just fills the screen. */}
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 480,
+              flexGrow: 1,
+              paddingHorizontal: 28,
+              paddingTop: 40,
+              paddingBottom: 32,
+            }}>
+            <FadeIn>
+              <Text className="text-4xl text-ink font-serif">환영해요</Text>
             <Text className="mt-4 text-base leading-7 text-ink/70 font-sans">
               매달 예산과 고정 지출을 정해두면,{'\n'}남은 예산이 한눈에 보여요.{'\n'}언제든 설정에서 바꿀 수 있어요.
             </Text>
@@ -152,6 +163,7 @@ function OnboardingWelcome({ onDone }: { onDone: () => void }) {
               <Text className="text-sm text-muted font-sans-medium">나중에 할게요</Text>
             </Pressable>
           </FadeIn>
+          </View>
         </ScrollView>
       </SafeAreaView>
 
