@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react-native';
+import { Check, Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Animated,
@@ -32,6 +32,7 @@ import { useSyncStore } from '@/store/sync-store';
 /** Max content width on wide screens — mobile is narrower than this, so it just fills the screen. */
 const ONBOARDING_MAX_WIDTH = 700;
 const STEP_COUNT = 2;
+const STEP_LABELS = ['기본 예산', '고정 지출'];
 
 /**
  * First-run welcome (onboarding item 2). Gently invites a brand-new user to set their DEFAULT budget +
@@ -109,13 +110,21 @@ function OnboardingWelcome({ onDone }: { onDone: () => void }) {
     Math.min(Dimensions.get('window').width, ONBOARDING_MAX_WIDTH),
   );
   const translateX = useRef(new Animated.Value(0)).current;
+  const lineProgress = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(translateX, {
       toValue: -vw * step,
-      duration: 320,
+      duration: 360,
       useNativeDriver: Platform.OS !== 'web',
     }).start();
-  }, [step, vw, translateX]);
+    // The stepper line fills as we advance. It animates `width`, which the native driver can't do, so
+    // drive it separately in JS.
+    Animated.timing(lineProgress, {
+      toValue: step,
+      duration: 360,
+      useNativeDriver: false,
+    }).start();
+  }, [step, vw, translateX, lineProgress]);
 
   // Final commit: save the budget (fixed expenses are already saved as they're added), then close.
   const finish = () => {
@@ -144,29 +153,8 @@ function OnboardingWelcome({ onDone }: { onDone: () => void }) {
             alignSelf: 'center',
           }}
         >
-          {/* Step progress — a segmented bar spanning the content width (edges aligned to it), so it
-              reads as real progress instead of a floating pair of dots. A segment fills once reached. */}
-          <View
-            style={{
-              flexDirection: 'row',
-              gap: 6,
-              paddingHorizontal: 28,
-              paddingTop: 16,
-              paddingBottom: 20,
-            }}
-          >
-            {Array.from({ length: STEP_COUNT }).map((_, i) => (
-              <View
-                key={i}
-                style={{
-                  flex: 1,
-                  height: 6,
-                  borderRadius: 999,
-                  backgroundColor: i <= step ? Palette.ink : Palette.line,
-                }}
-              />
-            ))}
-          </View>
+          {/* Numbered-circle stepper joined by a line that fills as you advance (see StepProgress). */}
+          <StepProgress step={step} lineProgress={lineProgress} />
 
           {/* Carousel viewport — clips the off-screen step; the row slides via translateX. */}
           <View
@@ -197,7 +185,7 @@ function OnboardingWelcome({ onDone }: { onDone: () => void }) {
                   </Text>
                   <View className="rounded-2xl border border-line bg-white/60 px-5 py-6">
                     <View className="flex-row items-end justify-center gap-1">
-                      <AmountInput plain value={budget} onChangeValue={setBudget} />
+                      <AmountInput plain autoFocus value={budget} onChangeValue={setBudget} />
                       <Text className="pb-1 text-xl text-muted font-serif">원</Text>
                     </View>
                   </View>
@@ -315,6 +303,79 @@ function StepPane({ width, children }: { width: number; children: ReactNode }) {
       >
         {children}
       </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * Numbered-circle stepper: two nodes joined by a line that fills (animated) as the step advances.
+ * A passed node shows a check, the current one its number, an upcoming one an outline.
+ */
+function StepProgress({ step, lineProgress }: { step: number; lineProgress: Animated.Value }) {
+  const fillWidth = lineProgress.interpolate({
+    inputRange: [0, STEP_COUNT - 1],
+    outputRange: ['0%', '100%'],
+  });
+  return (
+    <View style={{ paddingHorizontal: 28, paddingTop: 16, paddingBottom: 20 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <StepDot index={0} step={step} />
+        <View
+          style={{
+            flex: 1,
+            height: 3,
+            marginHorizontal: 10,
+            borderRadius: 2,
+            backgroundColor: Palette.line,
+            overflow: 'hidden',
+          }}
+        >
+          <Animated.View
+            style={{ height: 3, width: fillWidth, backgroundColor: Palette.ink }}
+          />
+        </View>
+        <StepDot index={1} step={step} />
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+        {STEP_LABELS.map((label, i) => (
+          <Text
+            key={label}
+            className={`text-xs font-sans-medium ${i <= step ? 'text-ink' : 'text-muted'}`}
+          >
+            {label}
+          </Text>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function StepDot({ index, step }: { index: number; step: number }) {
+  const reached = index <= step;
+  const done = index < step;
+  return (
+    <View
+      style={{
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: reached ? Palette.ink : Palette.paper,
+        borderWidth: reached ? 0 : 1.5,
+        borderColor: Palette.line,
+      }}
+    >
+      {done ? (
+        <Check size={15} color={Palette.paper} strokeWidth={3} />
+      ) : (
+        <Text
+          className="text-[13px] font-sans-bold"
+          style={{ color: reached ? Palette.paper : Palette.muted }}
+        >
+          {index + 1}
+        </Text>
+      )}
     </View>
   );
 }
