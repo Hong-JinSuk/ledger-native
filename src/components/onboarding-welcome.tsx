@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,8 +8,10 @@ import { FadeIn } from '@/components/fade-in';
 import { FixedExpenseCard } from '@/components/fixed-expense-card';
 import { FixedExpenseDrawer, type FixedExpenseDrawerRef } from '@/components/fixed-expense-drawer';
 import { Palette } from '@/constants/palette';
+import { isNewSignup } from '@/lib/auth/is-new-signup';
 import { isFreshLedger } from '@/lib/ledger/selectors';
 import { loadOnboardingSeen, markOnboardingSeen } from '@/lib/storage/onboarding-storage';
+import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
 import { useSyncStore } from '@/store/sync-store';
 
@@ -34,6 +36,12 @@ export function OnboardingGate() {
   // on budget, so an existing user never pays the record scan.
   const isFresh = useLedgerStore((s) => isFreshLedger(s.settings, s.records));
   const syncStatus = useSyncStore((s) => s.status);
+  const session = useAuthStore((s) => s.session);
+  // A brand-new Supabase account has never used the app → its Drive has no ledger file to wait for, so
+  // we can open onboarding at once instead of blocking on the first sync settling (the file-creating sync
+  // still runs in the background). Returning users keep waiting for 'synced' so their pulled Drive data
+  // can prove they're not new — no flash. Computed once per session (now captured at login).
+  const newSignup = useMemo(() => (session ? isNewSignup(session.user, Date.now()) : false), [session]);
 
   // Latch the decision ONCE. The show conditions are checked only until we open; after that, live store
   // changes must NOT tear the overlay down mid-setup — adding a fixed expense makes the ledger no longer
@@ -42,10 +50,10 @@ export function OnboardingGate() {
   const [show, setShow] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   useEffect(() => {
-    if (!show && !dismissed && seen === false && syncStatus === 'synced' && isFresh) {
+    if (!show && !dismissed && seen === false && isFresh && (newSignup || syncStatus === 'synced')) {
       setShow(true);
     }
-  }, [show, dismissed, seen, syncStatus, isFresh]);
+  }, [show, dismissed, seen, isFresh, newSignup, syncStatus]);
 
   const markDone = useCallback(() => {
     void markOnboardingSeen();
