@@ -24,6 +24,7 @@ import { RecordDrawer, type RecordDrawerRef } from '@/components/record-drawer';
 import { Screen } from '@/components/screen';
 import { webScrollContent } from '@/constants/layout';
 import { Palette } from '@/constants/palette';
+import { useIsWideScreen } from '@/hooks/use-responsive';
 import {
   currentMonthKey,
   daysInMonth,
@@ -42,7 +43,7 @@ import {
   searchRows,
   sortRowsByDayDesc,
 } from '@/lib/ledger/selectors';
-import { formatCurrency, formatSignedCurrency } from '@/lib/money';
+import { formatAmount, formatCurrency, formatSignedCurrency } from '@/lib/money';
 import { useLedgerStore } from '@/store/ledger-store';
 import type { Transaction } from '@/types/ledger';
 
@@ -465,14 +466,21 @@ function MonthCalendar({
 }) {
   const totalDays = daysInMonth(year, month);
   const leading = firstWeekdayOfMonth(year, month);
+  const wide = useIsWideScreen();
+  // Taller cells on wide (web) fit merchant+amount rows; mobile fits amount-only rows.
+  const cellHeight = wide ? 88 : 84;
 
   const byDay = useMemo(() => {
-    const map: Record<number, { income: number; expense: number }> = {};
+    const map: Record<number, Transaction[]> = {};
     for (const r of rows) {
       if (r.day == null) continue;
-      const bucket = (map[r.day] ??= { income: 0, expense: 0 });
-      if (r.type === '수입') bucket.income += Number(r.amount) || 0;
-      else if (r.type === '지출') bucket.expense += Number(r.amount) || 0;
+      (map[r.day] ??= []).push(r);
+    }
+    // Largest magnitude first — the 3 shown are the day's most significant entries.
+    for (const key of Object.keys(map)) {
+      map[Number(key)].sort(
+        (a, b) => (Math.abs(Number(b.amount)) || 0) - (Math.abs(Number(a.amount)) || 0),
+      );
     }
     return map;
   }, [rows]);
@@ -494,13 +502,18 @@ function MonthCalendar({
           </View>
         ))}
       </View>
-      <View className="flex-row flex-wrap">
+      {/* Horizontal ledger rules only (no verticals → no crosshairs): cells carry the top rule,
+          the container closes the bottom. Warm paper-ledger feel; still distinguishes weeks. */}
+      <View className={`flex-row flex-wrap ${wide ? 'border-b border-line' : ''}`}>
         {cells.map((day, idx) => {
-          const activity = day != null ? byDay[day] : undefined;
+          const items = day != null ? byDay[day] : undefined;
           const today = day != null && isToday(year, month, day);
           const selected = day != null && day === selectedDay;
           return (
-            <View key={idx} style={{ width: `${100 / 7}%`, height: 56 }} className="items-center">
+            <View
+              key={idx}
+              style={{ width: `${100 / 7}%`, height: cellHeight }}
+              className={`items-center ${wide ? 'border-t border-line' : ''}`}>
               {day != null && (
                 <Pressable
                   onPress={() => onSelectDay(day)}
@@ -513,16 +526,72 @@ function MonthCalendar({
                       {day}
                     </Text>
                   </View>
-                  <View className="mt-1 h-1.5 flex-row gap-0.5">
-                    {!!activity?.income && <View className="h-1.5 w-1.5 rounded-full bg-income" />}
-                    {!!activity?.expense && <View className="h-1.5 w-1.5 rounded-full bg-expense" />}
-                  </View>
+                  {items && items.length > 0 && <DayItemsPreview items={items} wide={wide} />}
                 </Pressable>
               )}
             </View>
           );
         })}
       </View>
+    </View>
+  );
+}
+
+/**
+ * Compact in-cell preview of a day's transactions (up to 3, largest first, "+N 더" for the rest).
+ * Wide (web): merchant + colored amount rows. Narrow (mobile): amount-only, centered — the cell is
+ * ~1/7 of the width, so merchant names wouldn't fit. Sign/color derive from type (지출 red -, 수입
+ * green +, 이체 blue).
+ */
+function DayItemsPreview({ items, wide }: { items: Transaction[]; wide: boolean }) {
+  const shown = items.slice(0, 3);
+  const extra = items.length - shown.length;
+  return (
+    <View className="mt-1 w-full px-1" style={wide ? { maxWidth: 116 } : undefined}>
+      {shown.map((t) => {
+        const isExpense = t.type === '지출';
+        const isIncome = t.type === '수입';
+        const color = isExpense ? 'text-expense' : isIncome ? 'text-income' : 'text-transfer';
+        const amount = `${isExpense ? '-' : isIncome ? '+' : ''}${formatAmount(
+          Math.abs(Number(t.amount) || 0),
+        )}`;
+        if (wide) {
+          const name = t.merchant || t.category || '기록';
+          const short = name.length > 6 ? `${name.slice(0, 6)}…` : name;
+          // Merchant recedes (taupe); amount keeps its semantic color — 지출 red, 수입 green,
+          // 이체 muted. Merchant flex-1 keeps the amount right-aligned (justify-between); the
+          // narrow maxWidth (not a big gap) is what pulls the two columns close together.
+          const amountColor = isExpense ? 'text-expense' : isIncome ? 'text-income' : 'text-muted';
+          return (
+            <View key={t.id} className="flex-row items-baseline gap-0.5">
+              <Text
+                numberOfLines={1}
+                className="flex-1 text-[10px] leading-[13px] text-muted font-sans">
+                {short}
+              </Text>
+              <Text
+                numberOfLines={1}
+                className={`text-[10px] leading-[13px] font-mono ${amountColor}`}>
+                {amount}
+              </Text>
+            </View>
+          );
+        }
+        return (
+          <Text
+            key={t.id}
+            numberOfLines={1}
+            className={`text-center text-[9px] leading-[12px] font-mono ${color}`}>
+            {amount}
+          </Text>
+        );
+      })}
+      {extra > 0 && (
+        <Text
+          className={`text-[9px] text-muted font-sans ${wide ? 'leading-[13px]' : 'text-center leading-[12px]'}`}>
+          +{extra} 더
+        </Text>
+      )}
     </View>
   );
 }
