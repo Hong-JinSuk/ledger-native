@@ -56,6 +56,12 @@ export interface CategoryItem extends SyncMeta {
   icon: string;
   type: TransactionType;
   subcategories: string[];
+  /**
+   * The user's manual sort position within its type (drag-to-reorder in the category manager). Lower
+   * comes first. Optional: absent = not yet manually arranged, so the picker falls back to usage order.
+   * Backward-compatible, so no snapshot migration is needed.
+   */
+  order?: number;
 }
 
 /**

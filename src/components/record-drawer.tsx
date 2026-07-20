@@ -14,7 +14,7 @@ import { Palette } from '@/constants/palette';
 import { animateNextLayout } from '@/lib/animate-next-layout';
 import { daysInMonth, firstWeekdayOfMonth, isToday } from '@/lib/date';
 import { summarizeInstallment } from '@/lib/ledger/installment';
-import { categoryUsage, orderByUsage } from '@/lib/ledger/selectors';
+import { categoryUsage, orderCategories } from '@/lib/ledger/selectors';
 import { formatAmount } from '@/lib/money';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
 import { transactionFormSchema, type TransactionFormValues } from '@/schemas/transaction';
@@ -161,7 +161,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   // Most-used first (recent 3 months, then all-time); ties keep the seed order, so unused ones stay last.
   const visibleCategories = useMemo(
     () =>
-      orderByUsage(
+      orderCategories(
         categories.filter((c) => !c.deleted && c.type === selectedType),
         usageCounts[selectedType],
       ),

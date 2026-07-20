@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Transaction } from '@/types/ledger';
+import type { CategoryItem, Transaction } from '@/types/ledger';
 
 // Mock the only two RN-specific deps so the real store runs under node.
 vi.mock('@/lib/id', () => {
@@ -226,5 +226,34 @@ describe('store: addTransaction into a new year', () => {
     expect(s.records['2027-03'].length).toBe(1);
     expect(s.years).toContain(2027);
     expect(s.yearMeta['2027']?.deleted).toBe(false);
+  });
+});
+
+function cat(id: string, type: CategoryItem['type']): CategoryItem {
+  return {
+    id,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    deleted: false,
+    name: id,
+    icon: 'Tag',
+    type,
+    subcategories: [],
+  };
+}
+
+describe('store: reorderCategories', () => {
+  it('assigns order = index for the given type, bumps updatedAt, leaves other types untouched', () => {
+    useLedgerStore.setState({
+      categories: [cat('c1', '지출'), cat('c2', '지출'), cat('inc', '수입')],
+    });
+    useLedgerStore.getState().reorderCategories('지출', ['c2', 'c1']);
+    const cats = useLedgerStore.getState().categories;
+    const byId = (id: string) => cats.find((c) => c.id === id)!;
+    expect(byId('c2').order).toBe(0);
+    expect(byId('c1').order).toBe(1);
+    expect(byId('c2').updatedAt).toBe('2026-07-14T00:00:00.000Z'); // bumped (mocked nowIso)
+    expect(byId('inc').order).toBeUndefined(); // other type not touched
+    expect(byId('inc').updatedAt).toBe('2026-01-01T00:00:00.000Z');
   });
 });

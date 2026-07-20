@@ -10,6 +10,7 @@ import {
   monthRemainingBudget,
   monthSummary,
   orderByUsage,
+  orderCategories,
   searchRows,
   sortRowsByDayDesc,
   totalExpense,
@@ -222,6 +223,29 @@ describe('orderByUsage', () => {
 
   it('leaves categories with no usage in their original order', () => {
     expect(orderByUsage(cats(['a', 'b', 'c']), {}).map((c) => c.name)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('orderCategories (manual order vs usage fallback)', () => {
+  it('falls back to usage order when nothing is manually arranged', () => {
+    const usage = { 배달: { recent: 30, total: 45 }, 식비: { recent: 18, total: 300 } };
+    const items = [{ name: '식비' }, { name: '배달' }, { name: '교통' }];
+    expect(orderCategories(items, usage).map((c) => c.name)).toEqual(['배달', '식비', '교통']);
+  });
+
+  it('uses the manual order (ascending) once any category has one; usage is ignored', () => {
+    const usage = { 배달: { recent: 99, total: 99 } }; // would top usage, but manual order wins
+    const items = [
+      { name: '배달', order: 2 },
+      { name: '식비', order: 0 },
+      { name: '교통', order: 1 },
+    ];
+    expect(orderCategories(items, usage).map((c) => c.name)).toEqual(['식비', '교통', '배달']);
+  });
+
+  it('sorts a category added after arranging (no order) to the end', () => {
+    const items = [{ name: '식비', order: 0 }, { name: '교통', order: 1 }, { name: '새거' }];
+    expect(orderCategories(items, {}).map((c) => c.name)).toEqual(['식비', '교통', '새거']);
   });
 });
 

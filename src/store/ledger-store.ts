@@ -169,6 +169,12 @@ export interface LedgerState {
   addCategory: (input: CategoryInput) => CategoryItem;
   updateCategory: (id: string, patch: Partial<CategoryInput>) => void;
   deleteCategory: (id: string) => void;
+  /**
+   * Persist the user's manual category order (drag-to-reorder in the manager): assigns order = index
+   * to each id, for that type only. Bumps updatedAt so the arrangement wins the Drive merge. Per-id
+   * order can drift slightly under concurrent cross-device reorders, but never breaks (sort is total).
+   */
+  reorderCategories: (type: TransactionType, orderedIds: string[]) => void;
 }
 
 export const useLedgerStore = create<LedgerState>((set, get) => {
@@ -804,6 +810,18 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
         categories: s.categories.map((c) =>
           c.id === id ? { ...c, deleted: true, updatedAt: nowIso() } : c,
         ),
+      }));
+      persist();
+    },
+
+    reorderCategories: (type, orderedIds) => {
+      const ts = nowIso();
+      const rank = new Map(orderedIds.map((id, i) => [id, i]));
+      set((s) => ({
+        categories: s.categories.map((c) => {
+          const idx = c.type === type ? rank.get(c.id) : undefined;
+          return idx === undefined ? c : { ...c, order: idx, updatedAt: ts };
+        }),
       }));
       persist();
     },

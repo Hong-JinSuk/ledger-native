@@ -182,6 +182,22 @@ export function orderByUsage<T extends { name: string }>(
 }
 
 /**
+ * The category order shown in the picker/manager: the user's manual arrangement when they've set one
+ * (any item carries an `order`, via drag-to-reorder), otherwise the usage-ranked default. Manual order
+ * is ascending by `order`; an item without one (e.g. a category added after arranging) sorts to the
+ * end. Stable, so equal keys keep their input order.
+ */
+export function orderCategories<T extends { name: string; order?: number }>(
+  items: T[],
+  usage: Record<string, CategoryUsageStat>,
+): T[] {
+  if (!items.some((c) => c.order != null)) return orderByUsage(items, usage);
+  return [...items].sort(
+    (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER),
+  );
+}
+
+/**
  * True when the ledger looks brand-new — no default budget, no (live) fixed expenses, no (live) records.
  * Drives the first-run welcome (combined with a settled first sync + the local "seen" flag). Short-circuits
  * on budget so an existing user never pays the full record scan.

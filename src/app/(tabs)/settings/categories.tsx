@@ -1,7 +1,9 @@
 import { Plus } from 'lucide-react-native';
-import { useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
+import Animated, { useAnimatedRef } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Sortable from 'react-native-sortables';
 
 import { BackLink } from '@/components/back-link';
 import { CategoryDrawer, type CategoryDrawerRef } from '@/components/category-drawer';
@@ -11,6 +13,8 @@ import { FadeIn } from '@/components/fade-in';
 import { Screen } from '@/components/screen';
 import { webScrollContent } from '@/constants/layout';
 import { Palette } from '@/constants/palette';
+import { orderCategories } from '@/lib/ledger/selectors';
+import { syncOnEditEnd } from '@/lib/sync/sync-service';
 import { useLedgerStore } from '@/store/ledger-store';
 import type { CategoryItem, TransactionType } from '@/types/ledger';
 
@@ -22,19 +26,58 @@ const TONE: Record<TransactionType, string> = {
   이체: Palette.transfer,
 };
 
+const keyExtractor = (c: CategoryItem) => c.id;
+
 export default function CategoryManager() {
   const categories = useLedgerStore((s) => s.categories);
+  const reorderCategories = useLedgerStore((s) => s.reorderCategories);
   const [activeTab, setActiveTab] = useState<TransactionType>('지출');
 
-  const filtered = useMemo(
-    () => categories.filter((c) => !c.deleted && c.type === activeTab),
+  // Manual drag order if the user has arranged this type, else the seed order. (No usage context on
+  // this screen; usage-ranking is the picker's job — here the fallback is just the input order.)
+  const ordered = useMemo(
+    () => orderCategories(categories.filter((c) => !c.deleted && c.type === activeTab), {}),
     [categories, activeTab],
   );
 
   const drawerRef = useRef<CategoryDrawerRef>(null);
-  const openAdd = () => drawerRef.current?.present(null, activeTab);
-  const openEdit = (category: CategoryItem) => drawerRef.current?.present(category);
+  const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  // On web a drag release also fires a click on the tile, which would pop its edit modal. This guards
+  // the tap-to-edit: set while dragging, consumed by the first onPress after (the drag's own release).
+  const justDraggedRef = useRef(false);
   const insets = useSafeAreaInsets();
+
+  const openEdit = useCallback((category: CategoryItem) => drawerRef.current?.present(category), []);
+  const openAdd = useCallback(() => drawerRef.current?.present(null, activeTab), [activeTab]);
+
+  const renderTile = useCallback(
+    ({ item }: { item: CategoryItem }) => (
+      <Pressable
+        onPress={() => {
+          if (justDraggedRef.current) {
+            justDraggedRef.current = false; // this "press" is the drag's release, not a tap → ignore
+            return;
+          }
+          openEdit(item);
+        }}
+        className="w-full items-center py-1 active:opacity-60">
+        <View className="h-14 w-14 items-center justify-center rounded-full bg-fill">
+          <CategoryIcon name={item.icon} size={22} color={TONE[item.type]} />
+        </View>
+        <Text
+          className="mt-2 text-center text-[11px] text-ink font-sans-medium"
+          numberOfLines={1}>
+          {item.name}
+        </Text>
+        {item.subcategories.length > 0 && (
+          <Text className="mt-0.5 text-center text-[9px] text-muted font-sans">
+            소분류 {item.subcategories.length}
+          </Text>
+        )}
+      </Pressable>
+    ),
+    [openEdit],
+  );
 
   return (
     <Screen webFull>
@@ -72,43 +115,49 @@ export default function CategoryManager() {
           </View>
         </View>
 
-        {/* Scrollable area — ONLY the category grid for the active tab scrolls. */}
-        <ScrollView
+        {/* Scrollable grid — long-press a tile to drag-reorder; a tap opens it for editing. */}
+        <Animated.ScrollView
+          ref={scrollRef}
           style={{ flex: 1 }}
           contentContainerStyle={[
             { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 24 },
             webScrollContent,
           ]}>
           <FadeIn key={activeTab}>
-            {filtered.length === 0 ? (
+            {ordered.length === 0 ? (
               <EmptyState message={'이 분류엔 아직 카테고리가 없어요.\n아래에서 새 카테고리를 더해보세요.'} />
             ) : (
-              <View className="flex-row flex-wrap">
-                {filtered.map((category) => (
-                  <Pressable
-                    key={category.id}
-                    onPress={() => openEdit(category)}
-                    style={{ width: '25%' }}
-                    className="mb-6 items-center px-1 active:opacity-60">
-                    <View className="h-14 w-14 items-center justify-center rounded-full bg-fill">
-                      <CategoryIcon name={category.icon} size={22} color={TONE[category.type]} />
-                    </View>
-                    <Text
-                      className="mt-2 text-center text-[11px] text-ink font-sans-medium"
-                      numberOfLines={1}>
-                      {category.name}
-                    </Text>
-                    {category.subcategories.length > 0 && (
-                      <Text className="mt-0.5 text-center text-[9px] text-muted font-sans">
-                        소분류 {category.subcategories.length}
-                      </Text>
-                    )}
-                  </Pressable>
-                ))}
-              </View>
+              <>
+                <Text className="mb-4 text-center text-[11px] text-muted font-sans">
+                  길게 눌러 드래그하면 순서를 바꿀 수 있어요
+                </Text>
+                <Sortable.Grid
+                  columns={4}
+                  data={ordered}
+                  keyExtractor={keyExtractor}
+                  renderItem={renderTile}
+                  rowGap={20}
+                  columnGap={4}
+                  scrollableRef={scrollRef}
+                  onDragStart={() => {
+                    justDraggedRef.current = true; // suppress the release-click that follows on web
+                  }}
+                  onDragEnd={({ data }) => {
+                    reorderCategories(
+                      activeTab,
+                      data.map((c) => c.id),
+                    );
+                    syncOnEditEnd(); // push the new order to Drive right away (dirty-flag guarded)
+                    // Fallback: clear the guard if no release-click arrives (e.g. on native).
+                    setTimeout(() => {
+                      justDraggedRef.current = false;
+                    }, 300);
+                  }}
+                />
+              </>
             )}
           </FadeIn>
-        </ScrollView>
+        </Animated.ScrollView>
 
         {/* Fixed footer — the add button is always reachable, never scrolls away. */}
         <View
