@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { CalendarDays, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react-native';
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react-native';
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -13,7 +13,12 @@ import { useToast } from '@/components/toast';
 import { Palette } from '@/constants/palette';
 import { animateNextLayout } from '@/lib/animate-next-layout';
 import { daysInMonth, firstWeekdayOfMonth, isToday } from '@/lib/date';
-import { summarizeInstallment } from '@/lib/ledger/installment';
+import {
+  installmentTotals,
+  planInstallmentPayoff,
+  planInstallmentSlices,
+  summarizeInstallment,
+} from '@/lib/ledger/installment';
 import { categoryUsage, orderCategories } from '@/lib/ledger/selectors';
 import { formatAmount } from '@/lib/money';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
@@ -66,6 +71,10 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   const [installmentMonths, setInstallmentMonths] = useState(1);
   const [monthsText, setMonthsText] = useState('');
   const [installmentAnchorMonth, setInstallmentAnchorMonth] = useState<number | null>(null);
+  // 할부 이율 (연이율 %, 수동 입력). 0/빈칸 = 무이자. `aprText` is the raw field text (kept separate so a
+  // trailing "." or "10." isn't clobbered mid-typing); `installmentApr` is the parsed number used for the split.
+  const [installmentApr, setInstallmentApr] = useState(0);
+  const [aprText, setAprText] = useState('');
   // Date picker disclosure — the "M월 D일" badge toggles a calendar open right below it.
   const [dayPickerOpen, setDayPickerOpen] = useState(false);
   // The calendar's browsing month (‹ › nav) vs the record's target month (set when a day is tapped).
@@ -82,6 +91,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   const updateInstallment = useLedgerStore((s) => s.updateInstallment);
   const deleteTransaction = useLedgerStore((s) => s.deleteTransaction);
   const deleteInstallment = useLedgerStore((s) => s.deleteInstallment);
+  const payoffInstallment = useLedgerStore((s) => s.payoffInstallment);
   const confirm = useConfirm();
   const toast = useToast();
 
@@ -109,11 +119,17 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
         setInstallmentMonths(m);
         setMonthsText(m > 1 ? String(m) : '');
         setInstallmentAnchorMonth(sum?.firstMonth ?? tx.month);
-        if (sum) setValue('amount', sum.total);
+        const apr = sum?.apr ?? 0;
+        setInstallmentApr(apr);
+        setAprText(apr > 0 ? String(apr) : '');
+        // The amount box holds the PRINCIPAL (원금); interest is re-derived on top from the rate.
+        if (sum) setValue('amount', sum.principal);
       } else {
         setInstallmentMonths(1);
         setMonthsText('');
         setInstallmentAnchorMonth(null);
+        setInstallmentApr(0);
+        setAprText('');
       }
       sheetRef.current?.present();
     },
@@ -127,10 +143,21 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   // the preview matches what actually gets recorded.
   const editingInstallment = isEdit && !!transaction?.installmentId;
   const showInstallment = selectedType === '지출' && (!isEdit || editingInstallment);
-  const perMonth = installmentMonths > 1 ? Math.floor(amountValue / installmentMonths) : 0;
-  const firstMonthExtra = installmentMonths > 1 ? amountValue - perMonth * installmentMonths : 0;
+  // 완납 처리 shows only when future slices remain — settling the LAST slice would drop nothing.
+  const canPayoff =
+    editingInstallment && (transaction?.installmentSeq ?? 1) < (transaction?.installmentCount ?? 1);
+  const rateSet = installmentApr > 0;
   // The month the split starts from: the installment's original first month when editing, else this screen's.
   const previewStartMonth = installmentAnchorMonth ?? target.month;
+  // Exact preview — the same pure split the store will record (principal + declining-balance interest), so
+  // the numbers shown match what actually lands. Year is irrelevant to the amounts, so this screen's is fine.
+  const previewSlices =
+    showInstallment && installmentMonths > 1
+      ? planInstallmentSlices(target.year, previewStartMonth, amountValue, installmentMonths, null, installmentApr)
+      : [];
+  const previewTotals = installmentTotals(previewSlices);
+  // For the 무이자 preview: the steady monthly charge (slice 2+), which the first slice may exceed by the remainder.
+  const steadyCharge = previewSlices[1]?.amount ?? previewTotals.first;
 
   // Pick a preset (일시불 / 2·3·6·12개월) — mirror the choice into the "직접 입력" field so both stay in sync.
   const pickInstallmentMonths = (months: number) => {
@@ -144,6 +171,17 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
     setMonthsText(digits);
     const n = digits ? parseInt(digits, 10) : 1;
     setInstallmentMonths(n < 1 ? 1 : n);
+  };
+  // 연이율 입력: digits + a single decimal point, clamped to a sane 0–100%. Keep the raw text (so "10." mid-typing
+  // survives) unless the clamp actually changed the value.
+  const onChangeApr = (text: string) => {
+    let cleaned = text.replace(/[^0-9.]/g, '');
+    const dot = cleaned.indexOf('.');
+    if (dot !== -1) cleaned = cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, '');
+    const n = cleaned ? parseFloat(cleaned) : 0;
+    const clamped = Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0;
+    setAprText(clamped !== n ? String(clamped) : cleaned);
+    setInstallmentApr(clamped);
   };
 
   // ‹ › nav moves only the browsing month; the record's month changes when a day is tapped (onSelect).
@@ -178,6 +216,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
           updateInstallment(transaction.installmentId, {
             total: values.amount,
             count: Math.max(1, installmentMonths),
+            apr: installmentApr,
             day: values.day,
             type: values.type,
             category: values.category,
@@ -221,6 +260,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
           day: values.day,
           note: values.note,
           count: installmentMonths,
+          apr: installmentApr,
         });
       } else {
         addTransaction({
@@ -260,6 +300,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
       addTransaction,
       addInstallment,
       installmentMonths,
+      installmentApr,
       target,
       year,
       month,
@@ -290,6 +331,26 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
     sheetRef.current?.dismiss();
   }, [transaction, deleteTransaction, deleteInstallment, year, month, confirm]);
 
+  // 완납(조기상환): settle the whole installment in the open slice's month. Plans against the SAVED data
+  // (not unsaved edits) so the lump + dropped months reflect what's actually stored.
+  const onPayoff = useCallback(async () => {
+    const id = transaction?.installmentId;
+    if (!id) return;
+    const plan = planInstallmentPayoff(useLedgerStore.getState().records, id, target.year, target.month);
+    if (!plan) return;
+    const ok = await confirm({
+      title: `${target.month}월에 완납할까요?`,
+      message: `남은 금액 ${formatAmount(plan.payoffAmount)}원이 ${target.month}월 지출로 합쳐지고, 이후 ${plan.removedCount}개월 할부는 사라져요. 되돌릴 수 없어요.`,
+      confirmLabel: '완납',
+      destructive: false,
+    });
+    if (!ok) return;
+    animateNextLayout();
+    payoffInstallment(id, target.year, target.month, watch('day') ?? null);
+    toast.success(`${target.month}월에 완납했어요`);
+    sheetRef.current?.dismiss();
+  }, [transaction, target, confirm, payoffInstallment, toast, watch]);
+
   return (
     <AdaptiveSheet
       ref={sheetRef}
@@ -313,7 +374,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
         <View className="mb-6">
           {showInstallment && installmentMonths > 1 && (
             <Text className="mb-1 text-center text-xs text-muted font-sans-medium">
-              할부 총액 · {installmentMonths}개월
+              할부 {rateSet ? '원금' : '총액'} · {installmentMonths}개월
             </Text>
           )}
           <View className="flex-row items-end justify-center gap-1">
@@ -387,17 +448,51 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
               </View>
             </View>
 
+            {/* 연이율 (수동 입력) — only for a real installment; blank = 무이자. */}
+            {installmentMonths > 1 && (
+              <View className="mt-2.5 flex-row items-center gap-2.5">
+                <Text className="text-sm text-muted font-sans-medium">연이율</Text>
+                <View className="flex-row items-center rounded-full bg-fill px-3.5 py-2">
+                  <SheetTextInput
+                    value={aprText}
+                    onChangeText={onChangeApr}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    placeholderTextColor={Palette.line}
+                    maxLength={5}
+                    className="min-w-[44px] text-center text-sm text-ink font-mono-medium"
+                  />
+                  <Text className="ml-0.5 text-sm text-muted font-sans-medium">%</Text>
+                </View>
+                <Text className="text-xs text-muted font-sans">무이자면 비워두세요</Text>
+              </View>
+            )}
+
             {installmentMonths > 1 && (
               <View className="mt-2.5 rounded-2xl bg-fill px-4 py-3">
-                {amountValue > 0 && (
-                  <Text className="text-sm text-ink font-sans-medium">
-                    {firstMonthExtra > 0
-                      ? `첫 달 ${formatAmount(perMonth + firstMonthExtra)}원, 이후 매달 ${formatAmount(perMonth)}원`
-                      : `매달 ${formatAmount(perMonth)}원`}
-                  </Text>
-                )}
+                {amountValue > 0 &&
+                  (rateSet ? (
+                    <>
+                      <Text className="text-sm text-ink font-sans-medium">
+                        첫 달 {formatAmount(previewTotals.first)}원 → 마지막 달{' '}
+                        {formatAmount(previewTotals.last)}원
+                      </Text>
+                      <Text className="mt-0.5 text-xs text-muted font-sans">
+                        이자 약 {formatAmount(previewTotals.interest)}원 · 총{' '}
+                        {formatAmount(previewTotals.total)}원
+                      </Text>
+                    </>
+                  ) : (
+                    <Text className="text-sm text-ink font-sans-medium">
+                      {previewTotals.first !== steadyCharge
+                        ? `첫 달 ${formatAmount(previewTotals.first)}원, 이후 매달 ${formatAmount(steadyCharge)}원`
+                        : `매달 ${formatAmount(steadyCharge)}원`}
+                    </Text>
+                  ))}
                 <Text className={`text-xs text-muted font-sans ${amountValue > 0 ? 'mt-0.5' : ''}`}>
-                  {previewStartMonth}월부터 {installmentMonths}개월 동안 나눠서 기록돼요.
+                  {rateSet
+                    ? `${previewStartMonth}월부터 ${installmentMonths}개월 동안, 남은 잔액에 연 ${installmentApr}% 이자가 붙어요.`
+                    : `${previewStartMonth}월부터 ${installmentMonths}개월 동안 나눠서 기록돼요.`}
                 </Text>
               </View>
             )}
@@ -553,6 +648,15 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
             {isEdit ? '수정 완료' : '저장'}
           </Text>
         </Pressable>
+
+        {canPayoff && (
+          <Pressable
+            onPress={onPayoff}
+            className="mt-3 flex-row items-center justify-center gap-1.5 py-2 active:opacity-60">
+            <CheckCircle2 size={15} color={Palette.ink} />
+            <Text className="text-sm text-ink font-sans-medium">완납 처리</Text>
+          </Pressable>
+        )}
 
         {isEdit && (
           <Pressable

@@ -4,7 +4,7 @@ import { DEFAULT_CATEGORIES } from '@/constants/categories';
 import { DEFAULT_SETTINGS, LEDGER_SNAPSHOT_VERSION } from '@/constants/ledger';
 import { monthKey } from '@/lib/date';
 import { newId, nowIso } from '@/lib/id';
-import { planInstallmentSlices } from '@/lib/ledger/installment';
+import { planInstallmentPayoff, planInstallmentSlices } from '@/lib/ledger/installment';
 import { migrateLedgerSnapshot } from '@/lib/ledger/migrate';
 import { asyncStorageLedger, type LedgerStorage } from '@/lib/storage/ledger-storage';
 import { mergeLedger, normalizeFixedExpense } from '@/lib/sync/merge';
@@ -54,10 +54,12 @@ export interface NewTransactionInput {
   note?: string;
 }
 
-/** A new installment purchase: a NewTransactionInput whose `amount` is the TOTAL, split over `count` months. */
+/** A new installment purchase: a NewTransactionInput whose `amount` is the PRINCIPAL (원금), split over `count` months. */
 export interface NewInstallmentInput extends NewTransactionInput {
-  /** Number of months to split the total across (≥ 2). */
+  /** Number of months to split the principal across (≥ 2). */
   count: number;
+  /** Manual annual interest rate (연이율, %). Omit/0 = 무이자. Interest rides the declining balance. */
+  apr?: number;
 }
 
 /** Fields of a transaction that may be edited in place (year/month are locked — see updateTransaction). */
@@ -133,8 +135,11 @@ export interface LedgerState {
   updateInstallment: (
     installmentId: string,
     input: {
+      /** New principal (원금) — re-split over `count` months; interest is added on top. */
       total: number;
       count: number;
+      /** Manual annual interest rate (연이율, %). 0/undefined collapses it back to 무이자. */
+      apr?: number;
       day: number | null;
       type: TransactionType | '';
       category?: string;
@@ -142,6 +147,13 @@ export interface LedgerState {
       note?: string;
     },
   ) => void;
+  /**
+   * Settle an installment EARLY in the month at `(year, month)`: that month's slice absorbs all remaining
+   * principal (itself + every later slice) plus its own interest, every LATER slice is tombstoned, and the
+   * earlier (already-paid) slices stay. Future interest is waived. `day` sets the payoff record's day.
+   * No-op if no live slice of the installment falls in that month.
+   */
+  payoffInstallment: (installmentId: string, year: number, month: number, day: number | null) => void;
   /** Soft-delete every record in a month (parallels deleteYear, one bucket). */
   deleteMonth: (year: number, month: number) => void;
 
@@ -344,12 +356,14 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
     },
 
     addInstallment: (input) => {
+      const apr = input.apr ?? 0;
       const slices = planInstallmentSlices(
         input.year,
         input.month,
         input.amount ?? 0,
         input.count,
         input.day ?? null,
+        apr,
       );
       const installmentId = newId();
       const ts = nowIso();
@@ -376,6 +390,9 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
             installmentId,
             installmentSeq: slice.seq,
             installmentCount: count,
+            // Interest-bearing → record the rate + this month's principal so an edit can recover 원금.
+            // 무이자 stores neither (amount === principal), staying byte-identical to pre-interest data.
+            ...(apr > 0 ? { installmentApr: apr, installmentPrincipal: slice.principal } : {}),
           };
           records[key] = [...(records[key] ?? []), tx];
           // A later slice can fall in a not-yet-present year (Dec → next Jan). Add the year so the charge
@@ -477,6 +494,7 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
 
     updateInstallment: (installmentId, input) => {
       const ts = nowIso();
+      const apr = input.apr ?? 0;
       set((s) => {
         // Anchor on the current FIRST slice so a re-split keeps the original purchase month, no matter
         // which slice was opened for editing.
@@ -495,8 +513,11 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
           input.total,
           input.count,
           input.day,
+          apr,
         );
         const count = slices.length;
+        // Interest only lives on a genuine multi-month installment; a collapse to 일시불 (count 1) clears it.
+        const applyApr = apr > 0 && count >= 2;
         const bySeq = new Map(slices.map((sl) => [sl.seq, sl]));
         const records = { ...s.records };
 
@@ -518,6 +539,9 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
               merchant: input.merchant ?? '',
               note: input.note ?? '',
               installmentCount: count,
+              // Re-stamp (or clear, when the rate is removed / collapsed to 일시불) the interest fields.
+              installmentApr: applyApr ? apr : undefined,
+              installmentPrincipal: applyApr ? sl.principal : undefined,
               updatedAt: ts,
             };
           });
@@ -545,6 +569,7 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
             installmentId,
             installmentSeq: sl.seq,
             installmentCount: count,
+            ...(applyApr ? { installmentApr: apr, installmentPrincipal: sl.principal } : {}),
           };
           records[key] = [...(records[key] ?? []), tx];
           if (!years.has(sl.year)) {
@@ -553,6 +578,46 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
           }
         }
         return { records, years: [...years].sort((a, b) => b - a), yearMeta };
+      });
+      persist();
+    },
+
+    payoffInstallment: (installmentId, year, month, day) => {
+      const plan = planInstallmentPayoff(get().records, installmentId, year, month);
+      if (!plan) return;
+      const ts = nowIso();
+      // Interest metadata only stays on a still-multi-month installment; collapsing to a single month clears it.
+      const applyApr = plan.apr > 0 && plan.count >= 2;
+      set((s) => {
+        const records = { ...s.records };
+        for (const key of Object.keys(records)) {
+          let touched = false;
+          const next = records[key].map((r) => {
+            if (r.installmentId !== installmentId || r.deleted) return r;
+            touched = true;
+            const seq = r.installmentSeq ?? 1;
+            if (seq > plan.payoffSeq) {
+              // Future month → tombstone (soft-delete) so the removal survives the Drive merge.
+              return { ...r, deleted: true, updatedAt: ts };
+            }
+            if (seq === plan.payoffSeq) {
+              // The payoff month absorbs the whole remaining balance and becomes the (new) last slice.
+              return {
+                ...r,
+                amount: plan.payoffAmount,
+                day,
+                installmentCount: plan.count,
+                installmentApr: applyApr ? plan.apr : undefined,
+                installmentPrincipal: applyApr ? plan.payoffPrincipal : undefined,
+                updatedAt: ts,
+              };
+            }
+            // Earlier (already-paid) month → keep it, just sync the shrunk count.
+            return { ...r, installmentCount: plan.count, updatedAt: ts };
+          });
+          if (touched) records[key] = next;
+        }
+        return { records };
       });
       persist();
     },

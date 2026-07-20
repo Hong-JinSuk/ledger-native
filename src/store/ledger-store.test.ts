@@ -113,6 +113,53 @@ describe('store: installments', () => {
     expect(live('2026-08').map((r) => r.amount)).toEqual([60000]);
     expect(live('2026-09')).toEqual([]); // September dropped (tombstoned)
   });
+
+  it('payoffInstallment (무이자) lumps the remaining months into the payoff month, drops later ones', () => {
+    useLedgerStore.setState({
+      records: {
+        '2026-07': [slice(1, 7, 40000)],
+        '2026-08': [slice(2, 8, 40000)],
+        '2026-09': [slice(3, 9, 40000)],
+      },
+      years: [2026],
+      yearMeta: {},
+    });
+    // Settle in August (seq 2): Aug absorbs Aug+Sep (80,000), Sep is tombstoned, Jul is left alone.
+    useLedgerStore.getState().payoffInstallment('inst-1', 2026, 8, 14);
+    expect(live('2026-07').map((r) => r.amount)).toEqual([40000]); // already-paid month untouched
+    expect(live('2026-08').map((r) => r.amount)).toEqual([80000]); // payoff lump
+    expect(live('2026-09')).toEqual([]); // future month dropped
+    // Count shrinks to the months actually paid (2), on every surviving slice.
+    expect([live('2026-07')[0], live('2026-08')[0]].map((r) => r.installmentCount)).toEqual([2, 2]);
+    expect(live('2026-08')[0].id).toBe('seed-2'); // same row, not recreated
+  });
+
+  it('payoffInstallment (유이자) waives future interest, keeps 원금 in installmentPrincipal + apr meta', () => {
+    // 원금 30만 · 3개월 · 연10%: seq1 102,500 / seq2 101,667 / seq3 100,833 (principal 10만씩).
+    const withApr = (seq: number, month: number, amount: number) => ({
+      ...slice(seq, month, amount),
+      installmentApr: 10,
+      installmentPrincipal: 100000,
+    });
+    useLedgerStore.setState({
+      records: {
+        '2026-07': [withApr(1, 7, 102500)],
+        '2026-08': [withApr(2, 8, 101667)],
+        '2026-09': [withApr(3, 9, 100833)],
+      },
+      years: [2026],
+      yearMeta: {},
+    });
+    // Settle in August (seq 2): remaining principal 200,000 + Aug interest 1,667 = 201,667. Sep interest waived.
+    useLedgerStore.getState().payoffInstallment('inst-1', 2026, 8, 14);
+    const aug = live('2026-08')[0];
+    expect(aug.amount).toBe(201667);
+    expect(aug.installmentPrincipal).toBe(200000); // remaining principal, so a later edit re-derives 원금
+    expect(aug.installmentApr).toBe(10);
+    expect(aug.installmentCount).toBe(2);
+    expect(live('2026-09')).toEqual([]);
+    expect(live('2026-07')[0].amount).toBe(102500); // paid month keeps its own interest-inclusive charge
+  });
 });
 
 describe('store: resetLocal (account switch)', () => {

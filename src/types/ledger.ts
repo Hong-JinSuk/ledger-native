@@ -47,6 +47,20 @@ export interface Transaction extends SyncMeta {
   installmentSeq?: number;
   /** Total number of months the installment is split over (≥ 2). */
   installmentCount?: number;
+  /**
+   * Manual annual interest rate (연이율, %) for the installment, e.g. 10 = 10%. Present only on
+   * interest-bearing installments (all slices carry the same value); absent ⇒ 0% (무이자). Interest is
+   * charged on the DECLINING balance (원금균등), so each slice's {@link amount} = its principal +
+   * that month's interest. Optional & backward-compatible ⇒ no snapshot migration (like {@link CategoryItem.order}).
+   */
+  installmentApr?: number;
+  /**
+   * This slice's PRINCIPAL portion (원금, integer KRW) — {@link amount} minus this month's interest.
+   * Present only when {@link installmentApr} is set; that's how the drawer recovers the original 원금 to
+   * re-split on edit (summing `amount` would fold interest back into the principal). Absent ⇒ the whole
+   * `amount` is principal (0% installments and pre-interest data).
+   */
+  installmentPrincipal?: number;
 }
 
 /** A user-facing category. Defaults ship with stable ids (see constants/categories). */
