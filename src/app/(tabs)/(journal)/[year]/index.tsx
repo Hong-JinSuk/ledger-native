@@ -9,6 +9,7 @@ import { FadeIn } from '@/components/fade-in';
 import { HoverReveal } from '@/components/hover-reveal';
 import { Screen } from '@/components/screen';
 import { webScrollContent } from '@/constants/layout';
+import { Palette } from '@/constants/palette';
 import { useIsWideScreen } from '@/hooks/use-responsive';
 import { monthKey } from '@/lib/date';
 import { activeRows, monthRemainingBudget, monthSummary, yearSummary } from '@/lib/ledger/selectors';
@@ -30,41 +31,43 @@ export default function MonthView() {
 
   return (
     <Screen webFull>
-      <ScrollView
-        contentContainerStyle={[
-          { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 64 },
-          webScrollContent,
-        ]}>
-        {isWide ? (
-          <View>
-            <AppHeader title={`${y} Ledger`} subtitle="연간 요약 및 월별 상세" size="md" />
-            {/* "< YEARS" (left) and the year totals (right) sit on the SAME row. */}
-            <View className="flex-row items-end justify-between">
-              <BackLink label="Years" />
-              <View className="flex-row gap-8">
-                <AmountStat label="수입" amount={totals.income} tone="income" size="lg" align="right" />
-                <AmountStat label="지출" amount={-totals.expense} tone="expense" size="lg" align="right" />
+      {/* 헤더 고정 (타이틀+요약+구분선) — 아래 월 카드만 스크롤 (Settings와 동일 패턴). */}
+      <View style={{ backgroundColor: Palette.paper }}>
+        <View style={[{ paddingHorizontal: 20, paddingTop: 16 }, webScrollContent]}>
+          {isWide ? (
+            <View>
+              <AppHeader title={`${y} Ledger`} subtitle="연간 요약 및 월별 상세" size="md" />
+              {/* "< YEARS" (left) and the year totals (right) sit on the SAME row. */}
+              <View className="flex-row items-end justify-between">
+                <BackLink label="Years" />
+                <View className="flex-row gap-8">
+                  <AmountStat label="수입" amount={totals.income} tone="income" size="lg" align="right" />
+                  <AmountStat label="지출" amount={-totals.expense} tone="expense" size="lg" align="right" />
+                </View>
               </View>
             </View>
-          </View>
-        ) : (
-          <>
-            <AppHeader
-              title={`${y} Ledger`}
-              subtitle="연간 요약 및 월별 상세"
-              backLabel="Years"
-              size="md"
-            />
-            <View className="mb-6 flex-row gap-6">
-              <AmountStat label="수입" amount={totals.income} tone="income" size="sm" />
-              <AmountStat label="지출" amount={totals.expense} tone="expense" size="sm" />
-            </View>
-          </>
-        )}
+          ) : (
+            <>
+              <AppHeader
+                title={`${y} Ledger`}
+                subtitle="연간 요약 및 월별 상세"
+                backLabel="Years"
+                size="md"
+              />
+              <View className="mb-6 flex-row gap-6">
+                <AmountStat label="수입" amount={totals.income} tone="income" size="sm" />
+                <AmountStat label="지출" amount={totals.expense} tone="expense" size="sm" />
+              </View>
+            </>
+          )}
+          {/* Full-width hairline under the header + "< YEARS" (web only). */}
+          {isWide ? <View className="mb-6 mt-5 h-px bg-line" /> : null}
+        </View>
+      </View>
 
-        {/* Full-width hairline under the header + "< YEARS" (web only). */}
-        {isWide ? <View className="mb-6 mt-5 h-px bg-line" /> : null}
-
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[{ paddingHorizontal: 20, paddingBottom: 64 }, webScrollContent]}>
         {/* Same rich card on both platforms — only the grid density differs: web 4-up (grows to
             fill the full width, aligning with the header totals), native 2-up for the narrow phone. */}
         <View className={isWide ? 'flex-row flex-wrap gap-3.5' : 'flex-row flex-wrap justify-between gap-y-3'}>

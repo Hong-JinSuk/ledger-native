@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, type Href } from 'expo-router';
 import { Search } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
@@ -33,11 +33,13 @@ export function AppHeader({
   title,
   subtitle,
   backLabel,
+  backFallback,
   size = 'lg',
 }: {
   title: string;
   subtitle: string;
   backLabel?: string;
+  backFallback?: Href;
   size?: Size;
 }) {
   const [replay, setReplay] = useState(0);
@@ -104,7 +106,7 @@ export function AppHeader({
       {backLabel ? (
         <FadeIn delay={subDelay + 70}>
           <View className="mt-3">
-            <BackLink label={backLabel} />
+            <BackLink label={backLabel} backFallback={backFallback} />
           </View>
         </FadeIn>
       ) : null}

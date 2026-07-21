@@ -68,9 +68,13 @@ export default function YearView() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 64 }}>
+      {/* 헤더 고정 — 아래 내용만 스크롤 (Settings와 동일 패턴). */}
+      <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
         <AppHeader title="Ledger" subtitle="Financial Journal" />
-
+      </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 64 }}>
         {/* Add year */}
         {isAdding ? (
           <View ref={addRowRef} className="mb-5 flex-row items-center gap-2">

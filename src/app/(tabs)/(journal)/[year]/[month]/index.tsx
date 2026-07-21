@@ -17,11 +17,11 @@ import { AmountStat } from '@/components/amount-stat';
 import { AppHeader } from '@/components/app-header';
 import { useConfirm } from '@/components/confirm-dialog';
 import { BudgetDrawer, type BudgetDrawerRef } from '@/components/budget-drawer';
-import { CategoryIcon } from '@/components/category-icon';
 import { EmptyState } from '@/components/empty-state';
 import { FadeIn } from '@/components/fade-in';
 import { RecordDrawer, type RecordDrawerRef } from '@/components/record-drawer';
 import { Screen } from '@/components/screen';
+import { TransactionRow } from '@/components/transaction-row';
 import { webScrollContent } from '@/constants/layout';
 import { Palette } from '@/constants/palette';
 import { useIsWideScreen } from '@/hooks/use-responsive';
@@ -76,6 +76,8 @@ export default function SpreadsheetView() {
   // the top (mirrors the welcome page header's scroll-reveal). The ref gates redundant state churn so the
   // handler only re-renders on the actual show↔hide flip, not every scroll frame.
   const [stickyShown, setStickyShown] = useState(false);
+  const [headerH, setHeaderH] = useState(0); // 고정 헤더 높이 — sticky 요약바를 그 아래에 띄우려고 잰다
+
   const stickyAnim = useRef(new Animated.Value(0)).current;
   const stickyShownRef = useRef(false);
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -163,21 +165,29 @@ export default function SpreadsheetView() {
   return (
     <Screen webFull>
       <View className="flex-1">
+        {/* 헤더 고정 — 아래만 스크롤 (Settings와 동일 패턴). 높이를 재서 sticky 요약바를 이 아래에 띄운다. */}
+        <View
+          onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}
+          style={{ backgroundColor: Palette.paper }}>
+          <View style={[{ paddingHorizontal: 20, paddingTop: 16 }, webScrollContent]}>
+            <AppHeader
+              title={`${y}. ${m}월`}
+              subtitle={`${m}월의 기록`}
+              backLabel="Months"
+              size="md"
+            />
+          </View>
+        </View>
+
         <ScrollView
+          style={{ flex: 1 }}
           contentContainerStyle={[
-            { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 96 },
+            { paddingHorizontal: 20, paddingBottom: 96 },
             webScrollContent,
           ]}
           onScroll={onScroll}
           scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled">
-          <AppHeader
-            title={`${y}. ${m}월`}
-            subtitle={`${m}월의 기록`}
-            backLabel="Months"
-            size="md"
-          />
-
           {/* Summary — tap to set/edit this month's budget */}
           <FadeIn>
             <Pressable
@@ -340,7 +350,8 @@ export default function SpreadsheetView() {
           pointerEvents={stickyShown ? 'auto' : 'none'}
           style={{
             position: 'absolute',
-            top: 0,
+            // 헤더 높이(소수점)가 반올림되며 헤더와 이 바 사이에 1px 틈이 생겨 내용이 새 보인다 → 1px 겹쳐 메운다.
+            top: headerH - 1,
             left: 0,
             right: 0,
             zIndex: 20,
@@ -404,48 +415,6 @@ function SegmentButton({
       className={`rounded-full px-4 py-1.5 ${active ? 'bg-white' : ''} active:opacity-70`}>
       <Text className={`text-xs font-sans-semibold ${active ? 'text-ink' : 'text-muted'}`}>
         {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function TransactionRow({
-  row,
-  icon,
-  currency,
-  onPress,
-}: {
-  row: Transaction;
-  icon: string | undefined;
-  currency: string;
-  onPress: () => void;
-}) {
-  const tone =
-    row.type === '수입' ? Palette.income : row.type === '지출' ? Palette.expense : Palette.transfer;
-  const amountClass =
-    row.type === '수입' ? 'text-income' : row.type === '지출' ? 'text-expense' : 'text-transfer';
-  const isInstallment = (row.installmentCount ?? 0) > 1;
-  return (
-    <Pressable
-      onPress={onPress}
-      className="flex-row items-center border-b border-line/60 py-3 active:opacity-60">
-      <View className="h-9 w-9 items-center justify-center rounded-full bg-fill">
-        <CategoryIcon name={icon} size={16} color={tone} />
-      </View>
-      <View className="ml-3 flex-1">
-        <Text className="text-[15px] text-ink font-sans-medium" numberOfLines={1}>
-          {row.merchant || row.category || '무제목'}
-        </Text>
-        {(isInstallment || !!row.category) && (
-          <Text className="mt-0.5 text-xs text-muted font-sans" numberOfLines={1}>
-            {isInstallment ? `할부 ${row.installmentSeq}/${row.installmentCount}` : ''}
-            {isInstallment && !!row.category ? ' · ' : ''}
-            {row.category ?? ''}
-          </Text>
-        )}
-      </View>
-      <Text className={`text-[15px] font-mono-medium ${amountClass}`}>
-        {formatSignedCurrency(row.amount, row.type, currency)}
       </Text>
     </Pressable>
   );

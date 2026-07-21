@@ -7,11 +7,13 @@ import { AppHeader } from '@/components/app-header';
 import { EmptyState } from '@/components/empty-state';
 import { FadeIn } from '@/components/fade-in';
 import { Screen } from '@/components/screen';
+import { TransactionRow } from '@/components/transaction-row';
 import { Palette } from '@/constants/palette';
-import { formatAmount } from '@/lib/money';
+import { weekdayLabel } from '@/lib/date';
 import { searchTransactions } from '@/lib/search/search-filter';
 import { useLedgerStore } from '@/store/ledger-store';
 import { useSearchStore } from '@/store/search-store';
+import type { Transaction } from '@/types/ledger';
 
 /** 한 페이지에 보여줄 결과 수. 이보다 많으면 아래 페이지네이션으로 넘긴다. */
 const PAGE_SIZE = 10;
@@ -29,7 +31,29 @@ export default function SearchResults() {
 
   const pageCount = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
-  const pageItems = results.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+
+  const categories = useLedgerStore((s) => s.categories);
+  const currency = useLedgerStore((s) => s.settings.currency);
+  const iconByCategory = useMemo(
+    () => Object.fromEntries(categories.map((c) => [c.name, c.icon])),
+    [categories],
+  );
+
+  // 이 페이지에 보이는 결과를 날짜별로 묶는다. 결과는 이미 최신순이라 같은 날짜가 연속으로 모여 Map이 그대로
+  // 날짜 그룹이 된다. 월 상세와 달리 검색은 여러 달을 넘나드니 헤더에 연·월·일을 모두 적어 날짜를 모호하지 않게
+  // 하고, 일별 합계는 '이 페이지에 보이는 행'만 기준으로 해 화면과 항상 일치시킨다(경계에서 잘린 날은 보이는 만큼만).
+  const dayGroups = useMemo(() => {
+    const slice = results.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+    const map = new Map<string, { year: number; month: number; day: number; rows: Transaction[] }>();
+    for (const t of slice) {
+      const day = t.day ?? 0;
+      const key = `${t.year}.${t.month}.${day}`;
+      const g = map.get(key);
+      if (g) g.rows.push(t);
+      else map.set(key, { year: t.year, month: t.month, day, rows: [t] });
+    }
+    return [...map.values()];
+  }, [results, safePage]);
 
   return (
     <Screen>
@@ -39,6 +63,7 @@ export default function SearchResults() {
           title="Search Results"
           subtitle={label ? `“${label}” · ${results.length}건` : '검색어가 없어요'}
           backLabel="Journal"
+          backFallback="/"
           size="sm"
         />
       </View>
@@ -58,36 +83,35 @@ export default function SearchResults() {
             key={safePage}
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 16 }}>
-            <View className="gap-2.5">
-              {pageItems.map((t, i) => (
+            {dayGroups.map(({ year, month, day, rows }, gi) => {
+              return (
                 // 페이지당 10개뿐이라 .map + stagger(8개까지 캡)로 충분 (CLAUDE.md 규칙).
-                <FadeIn key={t.id} delay={Math.min(i, 8) * 40}>
-                  <Pressable
-                    onPress={() =>
-                      router.push({
-                        pathname: '/[year]/[month]',
-                        params: { year: String(t.year), month: String(t.month) },
-                      })
-                    }
-                    className="flex-row items-center justify-between rounded-2xl border border-line bg-white/60 px-4 py-3.5 active:opacity-60">
-                    <View className="flex-1 pr-3">
-                      <Text className="text-[15px] text-ink font-sans-medium" numberOfLines={1}>
-                        {t.merchant || t.note || '(내용 없음)'}
-                      </Text>
-                      <Text className="mt-0.5 text-xs text-muted font-sans" numberOfLines={1}>
-                        {t.year}.{t.month}.{t.day ?? '—'} · {t.category || '미분류'}
-                        {t.merchant && t.note ? ` · ${t.note}` : ''}
-                      </Text>
-                    </View>
-                    <Text
-                      className={`shrink-0 text-[15px] font-mono-medium ${t.type === '수입' ? 'text-income' : 'text-ink'}`}>
-                      {t.type === '지출' ? '-' : ''}
-                      {formatAmount(t.amount)}
+                <FadeIn key={`${year}.${month}.${day}`} delay={Math.min(gi, 8) * 40}>
+                  <View className="mb-5">
+                    {/* 날짜 헤더 (합산 없이 날짜만) */}
+                    <Text className="mb-1 text-xs text-muted font-sans-semibold">
+                      {day === 0
+                        ? '날짜 미정'
+                        : `${year}.${month}.${day} ${weekdayLabel(year, month, day)}`}
                     </Text>
-                  </Pressable>
+                    {rows.map((t) => (
+                      <TransactionRow
+                        key={t.id}
+                        row={t}
+                        icon={iconByCategory[t.category ?? '']}
+                        currency={currency}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/[year]/[month]',
+                            params: { year: String(t.year), month: String(t.month) },
+                          })
+                        }
+                      />
+                    ))}
+                  </View>
                 </FadeIn>
-              ))}
-            </View>
+              );
+            })}
           </ScrollView>
 
           {pageCount > 1 ? (

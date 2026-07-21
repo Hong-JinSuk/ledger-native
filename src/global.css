@@ -12,3 +12,35 @@ input:focus,
 textarea:focus {
   outline: none;
 }
+
+/*
+ * Web only: warm, Apple-style overlay scrollbars. react-native-web renders each <ScrollView> as a
+ * <div>, so the browser's default chunky opaque scrollbar (visible track + heavy thumb) leaks in and
+ * reads as static, off-brand chrome. Replace it app-wide with a thin, rounded, translucent ink pill
+ * over a transparent track — soft at rest, darker when you reach for it. Native has no DOM, so these
+ * rules are a no-op there (iOS/Android already show their own thin auto-hiding indicator).
+ */
+html {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(26, 26, 26, 0.2) transparent; /* Firefox: thumb / track (ink @ low alpha) */
+}
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  /* 3px transparent border + padding-box clip insets the visible pill to ~5px, like macOS. The full
+     11px stays grabbable, so the delicate look doesn't cost a usable hit target. */
+  background-color: rgba(26, 26, 26, 0.16);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 160ms ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(26, 26, 26, 0.32);
+}
