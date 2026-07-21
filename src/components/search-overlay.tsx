@@ -6,12 +6,14 @@ import { Palette } from '@/constants/palette';
 import {
   appendOr,
   commitDraft,
+  groupsToTokens,
   popToken,
   removeTokenAt,
   tokensToText,
   toQueryGroups,
   type QueryToken,
 } from '@/lib/search/chip-query';
+import { useSearchStore } from '@/store/search-store';
 
 /**
  * 웹 커맨드바 검색 오버레이 (프로토타입 — 칩 입력까지 동작, 실제 필터/⌘단축키는 다음 단계).
@@ -39,6 +41,14 @@ export function SearchOverlay({
   const latest = useRef({ draft, tokens, onSubmit });
   latest.current = { draft, tokens, onSubmit };
 
+  // 열 때마다 '마지막으로 검색 실행된' 쿼리로 초기화한다. → 검색하면 그 내역이 유지되고(store에 있음),
+  // 검색하지 않고 닫으면 편집 중이던 칩/입력은 버려진다(store 미변경 → 다음 열 때 초기화됨).
+  useEffect(() => {
+    if (!visible) return;
+    setTokens(groupsToTokens(useSearchStore.getState().groups));
+    setDraft('');
+  }, [visible]);
+
   // 웹: 한글 IME 대응 keydown 리스너. RN의 onKeyPress는 isComposing을 안 줘서, 조합 확정 Enter가
   // 칩 확정으로 이중 처리됨("검색" Enter → [검색][색]). DOM 이벤트로 isComposing을 직접 보고 조합 중이면 건너뛴다.
   useEffect(() => {
@@ -58,8 +68,10 @@ export function SearchOverlay({
       }
       if (e.key === 'Enter') {
         e.preventDefault();
-        setTokens((t) => commitDraft(t, latest.current.draft)); // 예약어 and/or면 연산자, 아니면 term
-        setDraft('');
+        const cur = latest.current.tokens;
+        const next = commitDraft(cur, latest.current.draft); // 예약어 and/or면 연산자, 아니면 term
+        setTokens(next);
+        if (next.length !== cur.length) setDraft(''); // 확정된 경우에만 비우기 (1글자 거부 시 입력 유지)
       } else if (e.key === 'Backspace' && latest.current.draft === '') {
         setTokens((t) => popToken(t)); // 빈 입력창 백스페이스 → 마지막 칩 삭제
       }

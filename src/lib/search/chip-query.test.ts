@@ -4,6 +4,7 @@ import {
   appendOp,
   appendOr,
   commitDraft,
+  groupsToTokens,
   normalizeTokens,
   popToken,
   removeTokenAt,
@@ -46,6 +47,31 @@ describe('commitDraft (Enter)', () => {
 
   it('adjacent terms are the implicit AND (no operator token needed)', () => {
     expect(commitDraft(commitDraft([], '할부'), '생활')).toEqual([term('할부'), term('생활')]);
+  });
+
+  it('rejects a 1-char term (2글자 이상만), leaving tokens unchanged', () => {
+    expect(commitDraft([], '가')).toEqual([]);
+    expect(commitDraft([term('생활')], 'a')).toEqual([term('생활')]);
+  });
+});
+
+describe('groupsToTokens (restore overlay from the executed query)', () => {
+  it('rebuilds adjacency-AND within a group and OR between groups', () => {
+    expect(groupsToTokens([['할부', '생활'], ['월세']])).toEqual([
+      term('할부'),
+      term('생활'),
+      OR,
+      term('월세'),
+    ]);
+  });
+
+  it('round-trips with toQueryGroups', () => {
+    const groups = [['해화', '전골'], ['월세']];
+    expect(toQueryGroups(groupsToTokens(groups))).toEqual(groups);
+  });
+
+  it('empty groups → empty tokens', () => {
+    expect(groupsToTokens([])).toEqual([]);
   });
 });
 

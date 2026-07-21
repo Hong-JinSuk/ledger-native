@@ -1,10 +1,11 @@
 import { useRouter } from 'expo-router';
 import { Search, X } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Modal, Pressable, TextInput, View } from 'react-native';
+import { Animated, Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Palette } from '@/constants/palette';
+import { MIN_TERM_LEN } from '@/lib/search/chip-query';
 import { useSearchStore } from '@/store/search-store';
 
 /**
@@ -23,9 +24,10 @@ export function MobileSearchBar({
   const [query, setQuery] = useState('');
   const slide = useRef(new Animated.Value(0)).current;
 
-  // 위에서 살짝 내려오며 페이드 인 (감성 톤).
+  // 열 때: 마지막 '검색 실행된' 쿼리로 복원(검색 안 하고 닫으면 다음에 초기화됨) + 위에서 내려오는 페이드 인.
   useEffect(() => {
     if (!visible) return;
+    setQuery(useSearchStore.getState().groups.flat().join(' '));
     slide.setValue(0);
     Animated.timing(slide, {
       toValue: 1,
@@ -36,13 +38,14 @@ export function MobileSearchBar({
 
   if (!visible) return null;
 
+  const terms = query.trim().split(/\s+/).filter((t) => t.length >= MIN_TERM_LEN); // 2글자 이상만
+  const tooShort = query.trim().length > 0 && terms.length === 0;
+
   const submit = () => {
-    const terms = query.trim().split(/\s+/).filter(Boolean); // 공백 = AND. 보통 단어 하나.
-    onClose();
-    setQuery('');
-    if (!terms.length) return;
+    if (!terms.length) return; // 2글자 이상 단어가 없으면 검색 안 함 (바는 열린 채로 둔다)
     // 웹과 동일한 저장 구조: OR-of-AND 그룹 1개 + 라벨(| 로 구분). 결과는 /search가 소비.
     useSearchStore.getState().setQuery([terms], terms.join(' | '));
+    onClose();
     router.push('/search');
   };
 
@@ -91,6 +94,11 @@ export function MobileSearchBar({
                   <X size={18} color={Palette.muted} />
                 </Pressable>
               </View>
+              {tooShort ? (
+                <Text className="mt-2 pl-8 text-xs text-muted font-sans">
+                  2글자 이상 입력해 주세요
+                </Text>
+              ) : null}
             </Pressable>
           </Animated.View>
         </SafeAreaView>

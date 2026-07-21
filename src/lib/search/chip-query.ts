@@ -27,15 +27,18 @@ export function appendOp(tokens: QueryToken[], kind: 'and' | 'or'): QueryToken[]
   return [...tokens, { kind }];
 }
 
+/** 검색어 최소 길이. 1글자는 너무 광범위해 막는다 — 2글자 이상만 term 칩이 된다. */
+export const MIN_TERM_LEN = 2;
+
 /**
  * Commit the current input on Enter: a reserved word (and/or) becomes an operator chip, anything else a
- * term chip. Blank ⇒ no-op. (Space no longer commits — the UI only calls this on Enter.)
+ * term chip. Blank/1글자 ⇒ no-op(칩 안 생김). (Space no longer commits — the UI only calls this on Enter.)
  */
 export function commitDraft(tokens: QueryToken[], draft: string): QueryToken[] {
   const op = reservedOp(draft);
   if (op) return appendOp(tokens, op);
   const value = draft.trim();
-  if (!value) return tokens;
+  if (value.length < MIN_TERM_LEN) return tokens; // 1글자 이하는 칩으로 확정하지 않는다
   return [...tokens, { kind: 'term', value }];
 }
 
@@ -106,4 +109,18 @@ export function tokensToText(tokens: QueryToken[]): string {
   return toQueryGroups(tokens)
     .map((group) => group.join(' | '))
     .join(' or ');
+}
+
+/**
+ * Rebuild an editable token list from executed OR-of-AND groups — restores the overlay to the last
+ * *searched* query when it reopens. Inverse of {@link toQueryGroups}: adjacency = AND, OR between groups.
+ *   [['할부','생활'], ['월세']] → [할부][생활] or [월세]
+ */
+export function groupsToTokens(groups: string[][]): QueryToken[] {
+  const tokens: QueryToken[] = [];
+  groups.forEach((group, gi) => {
+    if (gi > 0) tokens.push({ kind: 'or' });
+    group.forEach((value) => tokens.push({ kind: 'term', value }));
+  });
+  return tokens;
 }
