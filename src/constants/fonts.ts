@@ -14,6 +14,9 @@ import {
   PlayfairDisplay_500Medium,
   PlayfairDisplay_600SemiBold,
 } from '@expo-google-fonts/playfair-display';
+// 한글 헤딩용 산세리프. Playfair(라틴)엔 한글이 없어 시스템 폴백으로 딱딱해지던 걸, Inter/JOURNAL 라벨과
+// 결이 맞는 정통 한글 산세리프로 교체한다. 웨이트 600은 JOURNAL 라벨(Inter_600SemiBold)과 동일.
+import { NotoSansKR_600SemiBold } from '@expo-google-fonts/noto-sans-kr';
 
 /**
  * Fonts loaded at startup via `useFonts` in the root layout.
@@ -31,6 +34,7 @@ export const FONTS_TO_LOAD = {
   JetBrainsMono_400Regular,
   JetBrainsMono_500Medium,
   JetBrainsMono_600SemiBold,
+  NotoSansKR_600SemiBold,
 };
 
 /**
@@ -38,9 +42,10 @@ export const FONTS_TO_LOAD = {
  * dynamic styles). Inside components prefer `font-serif` / `font-sans` / `font-mono`.
  */
 export const FontFamily = {
-  serif: 'PlayfairDisplay_400Regular_Italic', // signature emotional headings (italic)
+  serif: 'PlayfairDisplay_400Regular_Italic', // signature emotional headings — LATIN only (no Hangul)
   serifMedium: 'PlayfairDisplay_500Medium',
   serifSemibold: 'PlayfairDisplay_600SemiBold',
+  headingKo: 'NotoSansKR_600SemiBold', // Hangul headings — paired with the Latin serif in AppHeader
   sans: 'Inter_400Regular',
   sansMedium: 'Inter_500Medium',
   sansSemibold: 'Inter_600SemiBold',
