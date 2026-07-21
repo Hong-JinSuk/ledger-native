@@ -1,21 +1,20 @@
 {
   "expo": {
-    "name": "ledger-native",
+    "name": "Ledger",
     "slug": "ledger-native",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/ledger-white.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/ledger-white.png"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#FCFBF7",
+        "foregroundImage": "./assets/images/ledger-transparent.png",
+        "monochromeImage": "./assets/images/ledger-transparent.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -35,7 +34,14 @@
       ],
       "expo-font",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/ledger-transparent.png",
+          "color": "#1A1A1A"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

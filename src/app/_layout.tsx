@@ -15,6 +15,7 @@ import { ConfirmProvider } from '@/components/confirm-dialog';
 import { Toaster } from '@/components/toast';
 import { FONTS_TO_LOAD } from '@/constants/fonts';
 import { Palette } from '@/constants/palette';
+import { initNotifications } from '@/lib/notifications/notifications';
 import { ensureAccountScope, syncNow } from '@/lib/sync/sync-service';
 import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
@@ -34,6 +35,12 @@ export default function RootLayout() {
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  // Register the local-notification handler + Android channel once at boot. Permission is NOT asked
+  // here — that happens lazily when a reminder is first turned on (see scheduleReminder).
+  useEffect(() => {
+    void initNotifications();
+  }, []);
 
   // Wire up Supabase auth: read the persisted session, then subscribe (cleanup unsubscribes).
   useEffect(() => initializeAuth(), [initializeAuth]);
