@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { ChevronRight, Layers, LogOut, Plus, RefreshCw, User } from 'lucide-react-native';
+import { Bell, ChevronRight, Layers, LogOut, Plus, RefreshCw, User } from 'lucide-react-native';
 import { useMemo, useRef } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
@@ -15,6 +15,7 @@ import { webScrollContent } from '@/constants/layout';
 import { Palette } from '@/constants/palette';
 import { signOut } from '@/lib/auth/auth';
 import { formatAmount } from '@/lib/money';
+import { alertSyncReauthNeeded } from '@/lib/sync/reauth-alert';
 import { syncNow } from '@/lib/sync/sync-service';
 import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
@@ -208,6 +209,18 @@ export default function SettingsView() {
                 </Text>
               </Pressable>
             </View>
+
+            {/* Dev-only: fire the 3-strike sync-error alert on demand (web → toast, native → OS 알림). */}
+            {__DEV__ && (
+              <Pressable
+                onPress={() => void alertSyncReauthNeeded()}
+                className="mt-3 flex-row items-center justify-center gap-1.5 rounded-full border border-line py-2.5 active:opacity-70">
+                <Bell size={13} color={Palette.muted} />
+                <Text className="text-[11px] uppercase tracking-wider text-muted font-sans-bold">
+                  동기화 오류 알림 테스트
+                </Text>
+              </Pressable>
+            )}
 
             <Pressable
               onPress={handleSignOut}

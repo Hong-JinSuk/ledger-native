@@ -8,6 +8,7 @@ import {
   writeLedgerFile,
 } from '@/lib/sync/drive-api';
 import { loadLedgerOwner, saveLedgerOwner } from '@/lib/storage/ledger-storage';
+import { alertSyncReauthNeeded } from '@/lib/sync/reauth-alert';
 import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
 import { useSyncStore } from '@/store/sync-store';
@@ -57,6 +58,12 @@ let lastPushedRev = -1;
 let lastRemoteModifiedTime: string | null = null;
 
 let inFlight: Promise<void> | null = null;
+
+// Consecutive Drive auth failures (401/403). A 403 is often a transient token/rate-limit hiccup, so we
+// retry with backoff and only surface the "re-login" alert after MAX_AUTH_RETRIES strikes in a row.
+const MAX_AUTH_RETRIES = 3;
+let authFailures = 0;
+let reauthAlerted = false;
 
 /**
  * Scope the local mirror to a Google account BEFORE syncing. The snapshot store + AsyncStorage are a
@@ -132,6 +139,8 @@ async function run(): Promise<boolean> {
       console.log('[sync] push skipped — not dirty (localRev', localRev, '=== lastPushedRev', lastPushedRev, ')');
     }
 
+    authFailures = 0; // a clean sync clears any prior auth-failure streak
+    reauthAlerted = false;
     update({ status: 'synced', lastSyncedAt: nowIso(), error: null });
     if (__DEV__) console.log('[sync] ✅ synced');
     return true;
@@ -139,8 +148,23 @@ async function run(): Promise<boolean> {
     // No Drive permission (never granted, or revoked) → a calm "needs permission" state, NOT a scary
     // "sync failed". Everything still works locally; the user simply hasn't connected Drive yet.
     if (err instanceof DriveAuthError) {
-      useSyncStore.getState().update({ status: 'unauthorized', error: 'Google Drive 권한이 필요해요.' });
-      if (__DEV__) console.warn('[sync] unauthorized (no Drive permission):', err);
+      // A 401/403 that survived the token refresh. Often transient (rate-limit / quota / a stale token),
+      // so retry with backoff; only after MAX_AUTH_RETRIES do we conclude a re-login is really needed.
+      authFailures = Math.min(authFailures + 1, MAX_AUTH_RETRIES);
+      if (__DEV__) console.warn(`[sync] auth failure ${authFailures}/${MAX_AUTH_RETRIES}:`, err);
+      if (authFailures < MAX_AUTH_RETRIES) {
+        useSyncStore.getState().update({ status: 'error', error: '동기화를 다시 시도하고 있어요…' });
+        setTimeout(() => void syncNow(), 1500 * authFailures); // back off: 1.5s, then 3s
+      } else {
+        // Three strikes → local data is safe, but Drive needs a fresh login. Alert once per streak.
+        useSyncStore
+          .getState()
+          .update({ status: 'unauthorized', error: '동기화 오류 — 다시 로그인해 주세요.' });
+        if (!reauthAlerted) {
+          reauthAlerted = true;
+          void alertSyncReauthNeeded();
+        }
+      }
       return false;
     }
     // Local data is untouched — surface softly and let the next trigger retry.
