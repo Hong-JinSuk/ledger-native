@@ -1,8 +1,14 @@
 import { type Href, useRouter, usePathname } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
-import { Pressable, Text } from 'react-native';
+import { Platform, Pressable, Text } from 'react-native';
 
 import { Palette } from '@/constants/palette';
+
+// react-native-web turns `dataSet` into data-* attributes — the hooks for the CSS hover effects in
+// global.css (chevron nudge on the whole link, ink shimmer on the label). Web-only (native has no
+// hover), and dataSet isn't in the RN types, hence the local spreads.
+const linkHook = Platform.OS === 'web' ? { dataSet: { backlink: 'true' } } : {};
+const shineHook = Platform.OS === 'web' ? { dataSet: { shine: 'back' } } : {};
 
 /**
  * Editorial back affordance: chevron + uppercase tracked label (e.g. "Years" / "Months").
@@ -30,11 +36,14 @@ export function BackLink({ label, backFallback }: { label: string; backFallback?
 
   return (
     <Pressable
+      {...linkHook}
       onPress={onPress}
       hitSlop={8}
       className="flex-row items-center gap-1 active:opacity-60">
       <ChevronLeft size={16} color={Palette.muted} strokeWidth={2.5} />
-      <Text className="mt-[1px] text-[10px] uppercase tracking-[2px] text-muted font-sans-semibold">
+      <Text
+        {...shineHook}
+        className="mt-[1px] text-[10px] uppercase tracking-[2px] text-muted font-sans-semibold">
         {label}
       </Text>
     </Pressable>

@@ -49,6 +49,7 @@ export interface NewTransactionInput {
   day?: number | null;
   type?: TransactionType | '';
   category?: string;
+  subcategory?: string;
   merchant?: string;
   amount?: number;
   note?: string;
@@ -64,7 +65,7 @@ export interface NewInstallmentInput extends NewTransactionInput {
 
 /** Fields of a transaction that may be edited in place (year/month are locked — see updateTransaction). */
 export type TransactionPatch = Partial<
-  Pick<Transaction, 'day' | 'type' | 'category' | 'merchant' | 'amount' | 'note'>
+  Pick<Transaction, 'day' | 'type' | 'category' | 'subcategory' | 'merchant' | 'amount' | 'note'>
 >;
 
 export type CategoryInput = Pick<CategoryItem, 'name' | 'icon' | 'type' | 'subcategories'>;
@@ -143,6 +144,7 @@ export interface LedgerState {
       day: number | null;
       type: TransactionType | '';
       category?: string;
+      subcategory?: string;
       merchant?: string;
       note?: string;
     },
@@ -338,6 +340,7 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
         merchant: input.merchant ?? '',
         amount: input.amount ?? 0,
         note: input.note ?? '',
+        ...(input.subcategory ? { subcategory: input.subcategory } : {}),
       };
       set((s) => {
         const hasYear = s.years.includes(input.year);
@@ -387,6 +390,7 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
             merchant: input.merchant ?? '',
             amount: slice.amount,
             note: input.note ?? '',
+            ...(input.subcategory ? { subcategory: input.subcategory } : {}),
             installmentId,
             installmentSeq: slice.seq,
             installmentCount: count,
@@ -536,6 +540,7 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
               day: sl.day,
               type: input.type || '지출',
               category: input.category ?? '',
+              subcategory: input.subcategory,
               merchant: input.merchant ?? '',
               note: input.note ?? '',
               installmentCount: count,
@@ -563,6 +568,7 @@ export const useLedgerStore = create<LedgerState>((set, get) => {
             day: sl.day,
             type: input.type || '지출',
             category: input.category ?? '',
+            subcategory: input.subcategory,
             merchant: input.merchant ?? '',
             amount: sl.amount,
             note: input.note ?? '',

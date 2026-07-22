@@ -148,7 +148,7 @@ export function SearchOverlay({
                 value={draft}
                 onChangeText={onChangeText}
                 autoFocus
-                placeholder={tokens.length ? '' : '메모·거래처 검색'}
+                placeholder={tokens.length ? '' : '거래처·카테고리·메모 검색'}
                 placeholderTextColor={Palette.muted}
                 className="min-w-[100px] flex-1 py-1.5 text-base text-ink font-sans"
               />

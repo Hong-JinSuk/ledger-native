@@ -3,8 +3,9 @@ import type { Transaction } from '@/types/ledger';
 /**
  * Filter transactions by a chip query's OR-of-AND groups (from {@link toQueryGroups}).
  *
- * Each group's terms must ALL appear (AND) in the transaction's 거래처(merchant) + 메모(note); a
- * transaction matches if ANY group matches (OR). Substring, case-insensitive. Tombstoned rows skipped.
+ * Each group's terms must ALL appear (AND) somewhere in the transaction's 거래처(merchant) + 메모(note)
+ * + 카테고리(category) + 소분류(subcategory); a transaction matches if ANY group matches (OR). Substring,
+ * case-insensitive. Tombstoned rows skipped.
  * Results are sorted newest-first (year, month, day desc). Empty query ⇒ [].
  *
  * Pure over the in-memory `records` — no file/network. Fast enough to scan the whole ledger (see the
@@ -15,7 +16,8 @@ export function searchTransactions(
   groups: string[][],
 ): Transaction[] {
   if (!groups.length) return [];
-  const haystack = (t: Transaction) => `${t.merchant ?? ''}\n${t.note ?? ''}`.toLowerCase();
+  const haystack = (t: Transaction) =>
+    `${t.merchant ?? ''}\n${t.note ?? ''}\n${t.category ?? ''}\n${t.subcategory ?? ''}`.toLowerCase();
   const out: Transaction[] = [];
   for (const rows of Object.values(records)) {
     for (const r of rows) {

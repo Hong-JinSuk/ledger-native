@@ -27,6 +27,14 @@ export function TransactionRow({
   const amountClass =
     row.type === '수입' ? 'text-income' : row.type === '지출' ? 'text-expense' : 'text-transfer';
   const isInstallment = (row.installmentCount ?? 0) > 1;
+  // Secondary line: 할부 badge · category · subcategory — whichever are present, joined by " · ".
+  const subtitle = [
+    isInstallment ? `할부 ${row.installmentSeq}/${row.installmentCount}` : null,
+    row.category || null,
+    row.subcategory || null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <Pressable
       onPress={onPress}
@@ -38,11 +46,9 @@ export function TransactionRow({
         <Text className="text-[15px] text-ink font-sans-medium" numberOfLines={1}>
           {row.merchant || row.category || '무제목'}
         </Text>
-        {(isInstallment || !!row.category) && (
+        {!!subtitle && (
           <Text className="mt-0.5 text-xs text-muted font-sans" numberOfLines={1}>
-            {isInstallment ? `할부 ${row.installmentSeq}/${row.installmentCount}` : ''}
-            {isInstallment && !!row.category ? ' · ' : ''}
-            {row.category ?? ''}
+            {subtitle}
           </Text>
         )}
       </View>

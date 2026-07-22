@@ -1,5 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react-native';
+import {
+  ArrowRight,
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Trash2,
+} from 'lucide-react-native';
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -38,16 +45,31 @@ type Props = {
   year: number;
   month: number;
   onClose?: () => void;
+  /**
+   * 넘기면 읽기 전용("미리보기") 모드가 된다(검색에서 사용): 폼은 값만 보여주고 편집이 막히며, 유일한 액션은
+   * 이 콜백으로 그 기록의 달로 이동하는 것뿐이다 — 수정·삭제는 그 달 화면에서. 넘기지 않으면(월 화면) 평소처럼
+   * 편집 가능한 드로어.
+   */
+  onNavigate?: (transaction: Transaction) => void;
 };
 
 function toDefaults(tx: Transaction | null, defaultDay: number | null): TransactionFormValues {
   if (!tx) {
-    return { type: '지출', amount: 0, category: undefined, merchant: '', day: defaultDay, note: '' };
+    return {
+      type: '지출',
+      amount: 0,
+      category: undefined,
+      subcategory: undefined,
+      merchant: '',
+      day: defaultDay,
+      note: '',
+    };
   }
   return {
     type: (tx.type || '지출') as TransactionType,
     amount: tx.amount,
     category: tx.category || undefined,
+    subcategory: tx.subcategory || undefined,
     merchant: tx.merchant || '',
     day: tx.day,
     note: tx.note || '',
@@ -55,7 +77,7 @@ function toDefaults(tx: Transaction | null, defaultDay: number | null): Transact
 }
 
 export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDrawer(
-  { year, month, onClose },
+  { year, month, onClose, onNavigate },
   ref,
 ) {
   const sheetRef = useRef<AdaptiveSheetRef>(null);
@@ -96,6 +118,8 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   const toast = useToast();
 
   const isEdit = transaction != null;
+  // onNavigate가 있으면 읽기 전용(미리보기) 모드 — 검색에서 상세만 보고 그 기록의 달로 이동한다.
+  const readOnly = !!onNavigate;
   const { control, handleSubmit, reset, watch, setValue } = useForm<TransactionFormValues>({
     resolver: zodResolver(transactionFormSchema),
     defaultValues: toDefaults(null, null),
@@ -138,6 +162,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
 
   const selectedType = watch('type');
   const amountValue = watch('amount');
+  const selectedCategoryName = watch('category');
   // 할부 control shows for a new expense OR when editing an existing installment (edit the whole unit).
   // Per-month = floor(total / months); the leftover rides the first month (mirrors the store's split) so
   // the preview matches what actually gets recorded.
@@ -206,8 +231,17 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
     [categories, selectedType, usageCounts],
   );
 
+  // Subcategories (소분류) of the chosen category — the optional refinement picker below the category
+  // row. Looked up across ALL live categories (not just the type-filtered visible set) so it still
+  // resolves when editing a record whose category is filtered out of the current type.
+  const subcategoryOptions = useMemo(() => {
+    const cat = categories.find((c) => !c.deleted && c.name === selectedCategoryName);
+    return cat?.subcategories ?? [];
+  }, [categories, selectedCategoryName]);
+
   const onSubmit = useCallback(
     (values: TransactionFormValues) => {
+      if (readOnly) return; // preview mode never writes — on web the keyboard can reach inputs despite pointerEvents:none
       animateNextLayout(); // gently settle the list when a row is added / its height changes
       if (isEdit && transaction) {
         if (transaction.installmentId) {
@@ -220,6 +254,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
             day: values.day,
             type: values.type,
             category: values.category,
+            subcategory: values.subcategory,
             merchant: values.merchant,
             note: values.note,
           });
@@ -228,6 +263,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
             type: values.type,
             amount: values.amount,
             category: values.category ?? '',
+            subcategory: values.subcategory,
             merchant: values.merchant ?? '',
             day: values.day,
             note: values.note ?? '',
@@ -256,6 +292,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
           type: values.type,
           amount: values.amount,
           category: values.category,
+          subcategory: values.subcategory,
           merchant: values.merchant,
           day: values.day,
           note: values.note,
@@ -269,6 +306,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
           type: values.type,
           amount: values.amount,
           category: values.category,
+          subcategory: values.subcategory,
           merchant: values.merchant,
           day: values.day,
           note: values.note,
@@ -292,6 +330,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
       sheetRef.current?.dismiss();
     },
     [
+      readOnly,
       isEdit,
       transaction,
       updateTransaction,
@@ -351,6 +390,13 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
     sheetRef.current?.dismiss();
   }, [transaction, target, confirm, payoffInstallment, toast, watch]);
 
+  // 읽기 전용 모드의 유일한 액션: 이 기록이 사는 달로 이동(그 화면에서 수정·삭제)한 뒤 시트를 닫는다.
+  const onNavigatePress = () => {
+    if (!transaction) return;
+    onNavigate?.(transaction);
+    sheetRef.current?.dismiss();
+  };
+
   return (
     <AdaptiveSheet
       ref={sheetRef}
@@ -361,14 +407,19 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
         syncOnEditEnd(); // write-end: push this edit to Drive (no-op if nothing changed)
       }}>
         <View className="mb-6">
-          <Text className="text-2xl text-ink font-serif">{isEdit ? '기록 수정' : '새 기록'}</Text>
-          {editingInstallment && (
+          <Text className="text-2xl text-ink font-serif">
+            {readOnly ? '기록 상세' : isEdit ? '기록 수정' : '새 기록'}
+          </Text>
+          {!readOnly && editingInstallment && (
             <View className="mt-1.5 self-start rounded-full bg-fill px-3 py-1">
               <Text className="text-xs text-muted font-sans-medium">할부 전체를 함께 수정해요</Text>
             </View>
           )}
         </View>
 
+        {/* 읽기 전용이면 폼 전체를 pointerEvents="none"로 감싸 값은 보이되 편집(탭·입력·달력)이 막힌다.
+            스크롤은 조상 ScrollView가 처리하므로 그대로 동작한다. */}
+        <View pointerEvents={readOnly ? 'none' : 'auto'}>
         {/* Amount — for an installment this is the TOTAL, split over the months (labeled so the big
             number never reads as a single month's charge). */}
         <View className="mb-6">
@@ -409,6 +460,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
                       onPress={() => {
                         field.onChange(t);
                         setValue('category', undefined);
+                        setValue('subcategory', undefined); // subcategories are category-specific
                         if (t !== '지출') pickInstallmentMonths(1); // 할부 is expense-only
                       }}
                       className={`flex-1 items-center rounded-full py-2.5 ${active ? 'bg-ink' : 'bg-fill'}`}>
@@ -512,7 +564,11 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
                     return (
                       <Pressable
                         key={c.id}
-                        onPress={() => field.onChange(active ? undefined : c.name)}
+                        onPress={() => {
+                          animateNextLayout(); // settle the subcategory row that appears/changes below
+                          field.onChange(active ? undefined : c.name);
+                          setValue('subcategory', undefined); // reset — subcategories are category-specific
+                        }}
                         className={`items-center rounded-2xl border px-3 py-2 ${active ? 'border-ink bg-ink' : 'border-line bg-white/60'}`}>
                         <CategoryIcon
                           name={c.icon}
@@ -530,6 +586,38 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
               </ScrollView>
             )}
           />
+
+          {/* 소분류 (subcategory) — optional refinement. Shown only when the category has a real option
+              beyond the default '기타' (most seeded categories carry only '기타', which is no real choice). */}
+          {subcategoryOptions.some((s) => s !== '기타') && (
+            <View className="mt-3">
+              <Text className="mb-2 text-[10px] uppercase tracking-wider text-muted font-sans-medium">
+                소분류 · 선택
+              </Text>
+              <Controller
+                control={control}
+                name="subcategory"
+                render={({ field }) => (
+                  <View className="flex-row flex-wrap gap-2">
+                    {subcategoryOptions.map((sub) => {
+                      const active = field.value === sub;
+                      return (
+                        <Pressable
+                          key={sub}
+                          onPress={() => field.onChange(active ? undefined : sub)}
+                          className={`rounded-full px-3 py-1.5 ${active ? 'bg-ink' : 'bg-fill'}`}>
+                          <Text
+                            className={`text-[13px] font-sans-medium ${active ? 'text-paper' : 'text-muted'}`}>
+                            {sub}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              />
+            </View>
+          )}
         </Field>
 
         {/* Merchant */}
@@ -576,6 +664,23 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
                 {/* True popover: absolutely positioned ABOVE the badge, so it floats over the fields
                     instead of pushing the form down. Floating up also stacks it over the
                     earlier-painted siblings (거래처 등) with no zIndex fight. */}
+                {/* Tap anywhere outside the calendar closes it. Transparent, huge insets so it covers
+                    the whole sheet (clipped to the scroll viewport); zIndex sits UNDER the popover card
+                    (50) but OVER the form, so form taps first dismiss the calendar. */}
+                {dayPickerOpen && (
+                  <Pressable
+                    onPress={() => setDayPickerOpen(false)}
+                    accessibilityLabel="달력 닫기"
+                    style={{
+                      position: 'absolute',
+                      top: -2000,
+                      bottom: -2000,
+                      left: -2000,
+                      right: -2000,
+                      zIndex: 40,
+                    }}
+                  />
+                )}
                 {dayPickerOpen && (
                   <View
                     className="rounded-2xl border border-line bg-paper p-3"
@@ -639,32 +744,48 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
             )}
           />
         </Field>
+        </View>
 
-        {/* Actions */}
-        <Pressable
-          onPress={handleSubmit(onSubmit)}
-          className="mt-4 items-center rounded-full bg-ink py-4 active:opacity-80">
-          <Text className="text-base text-paper font-sans-bold">
-            {isEdit ? '수정 완료' : '저장'}
-          </Text>
-        </Pressable>
-
-        {canPayoff && (
+        {/* Actions — 읽기 전용이면 '이 기록의 달로 이동' 하나, 아니면 저장/완납/삭제. */}
+        {readOnly ? (
           <Pressable
-            onPress={onPayoff}
-            className="mt-3 flex-row items-center justify-center gap-1.5 py-2 active:opacity-60">
-            <CheckCircle2 size={15} color={Palette.ink} />
-            <Text className="text-sm text-ink font-sans-medium">완납 처리</Text>
+            onPress={onNavigatePress}
+            className="mt-4 flex-row items-center justify-center gap-2 rounded-full bg-ink py-4 active:opacity-80">
+            <Text className="text-base text-paper font-sans-bold">
+              {transaction
+                ? `${transaction.year !== year ? `${transaction.year}년 ` : ''}${transaction.month}월로 이동`
+                : '이동'}
+            </Text>
+            <ArrowRight size={18} color={Palette.paper} />
           </Pressable>
-        )}
+        ) : (
+          <>
+            <Pressable
+              onPress={handleSubmit(onSubmit)}
+              className="mt-4 items-center rounded-full bg-ink py-4 active:opacity-80">
+              <Text className="text-base text-paper font-sans-bold">
+                {isEdit ? '수정 완료' : '저장'}
+              </Text>
+            </Pressable>
 
-        {isEdit && (
-          <Pressable
-            onPress={onDelete}
-            className="mt-3 flex-row items-center justify-center gap-1.5 py-2 active:opacity-60">
-            <Trash2 size={15} color={Palette.expense} />
-            <Text className="text-sm text-expense font-sans-medium">삭제</Text>
-          </Pressable>
+            {canPayoff && (
+              <Pressable
+                onPress={onPayoff}
+                className="mt-3 flex-row items-center justify-center gap-1.5 py-2 active:opacity-60">
+                <CheckCircle2 size={15} color={Palette.ink} />
+                <Text className="text-sm text-ink font-sans-medium">완납 처리</Text>
+              </Pressable>
+            )}
+
+            {isEdit && (
+              <Pressable
+                onPress={onDelete}
+                className="mt-3 flex-row items-center justify-center gap-1.5 py-2 active:opacity-60">
+                <Trash2 size={15} color={Palette.expense} />
+                <Text className="text-sm text-expense font-sans-medium">삭제</Text>
+              </Pressable>
+            )}
+          </>
         )}
     </AdaptiveSheet>
   );

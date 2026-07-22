@@ -18,6 +18,8 @@ function tx(p: Partial<Transaction> & { merchant?: string; note?: string }): Tra
     amount: p.amount ?? 1000,
     merchant: p.merchant ?? '',
     note: p.note ?? '',
+    category: p.category,
+    subcategory: p.subcategory,
   };
 }
 
@@ -38,6 +40,14 @@ describe('searchTransactions', () => {
     const c = tx({ merchant: '쿠팡', note: '생필품' });
     const hits = searchTransactions(recordsOf(a, b, c), [['스타벅스']]);
     expect(hits.map((t) => t.id).sort()).toEqual([a.id, b.id].sort());
+  });
+
+  it('matches on 카테고리(category) and 소분류(subcategory) too', () => {
+    const a = tx({ merchant: '스벅', category: '식비' });
+    const b = tx({ merchant: '이디야', subcategory: '커피/음료' });
+    const c = tx({ merchant: '쿠팡', category: '쇼핑' });
+    expect(searchTransactions(recordsOf(a, b, c), [['식비']]).map((t) => t.id)).toEqual([a.id]);
+    expect(searchTransactions(recordsOf(a, b, c), [['커피']]).map((t) => t.id)).toEqual([b.id]);
   });
 
   it('AND group: every term must appear', () => {

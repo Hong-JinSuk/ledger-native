@@ -1,11 +1,12 @@
 import { useRouter } from 'expo-router';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
-import { type ComponentType, useEffect, useMemo, useState } from 'react';
+import { type ComponentType, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { AppHeader } from '@/components/app-header';
 import { EmptyState } from '@/components/empty-state';
 import { FadeIn } from '@/components/fade-in';
+import { RecordDrawer, type RecordDrawerRef } from '@/components/record-drawer';
 import { Screen } from '@/components/screen';
 import { TransactionRow } from '@/components/transaction-row';
 import { Palette } from '@/constants/palette';
@@ -19,11 +20,16 @@ import type { Transaction } from '@/types/ledger';
 const PAGE_SIZE = 10;
 
 export default function SearchResults() {
-  const router = useRouter();
   const groups = useSearchStore((s) => s.groups);
   const label = useSearchStore((s) => s.label);
   const records = useLedgerStore((s) => s.records);
   const results = useMemo(() => searchTransactions(records, groups), [records, groups]);
+
+  const router = useRouter();
+  // 결과를 탭하면 기존 기록 드로어를 '읽기 전용'으로 연다 — 페이지를 떠나지 않고 내역을 그대로 보되 편집은
+  // 막고, 하단 "N월로 이동"으로 그 기록의 달 화면에서 수정·삭제한다(검색은 찾기 전용).
+  const drawerRef = useRef<RecordDrawerRef>(null);
+  const openDetail = (tx: Transaction) => drawerRef.current?.present(tx);
 
   const [page, setPage] = useState(0);
   // 새 검색이 실행되면(groups 교체) 첫 페이지로 되돌린다.
@@ -62,7 +68,7 @@ export default function SearchResults() {
         <AppHeader
           title="Search Results"
           subtitle={label ? `“${label}” · ${results.length}건` : '검색어가 없어요'}
-          backLabel="Journal"
+          backLabel="Back"
           backFallback="/"
           size="sm"
         />
@@ -72,7 +78,7 @@ export default function SearchResults() {
         <View className="px-5">
           <EmptyState
             message={
-              label ? `‘${label}’에 맞는 기록이 없어요.` : '위 검색창에서 메모·거래처로 찾아보세요.'
+              label ? `‘${label}’에 맞는 기록이 없어요.` : '위 검색창에서 거래처·카테고리·메모로 찾아보세요.'
             }
           />
         </View>
@@ -100,12 +106,7 @@ export default function SearchResults() {
                         row={t}
                         icon={iconByCategory[t.category ?? '']}
                         currency={currency}
-                        onPress={() =>
-                          router.push({
-                            pathname: '/[year]/[month]',
-                            params: { year: String(t.year), month: String(t.month) },
-                          })
-                        }
+                        onPress={() => openDetail(t)}
                       />
                     ))}
                   </View>
@@ -125,6 +126,20 @@ export default function SearchResults() {
           ) : null}
         </>
       )}
+
+      {/* 결과 상세 — 기존 드로어의 읽기 전용 모드(onNavigate 제공 → 편집 잠금 + '이동' 버튼). 항상 마운트해
+          ref를 안정적으로 유지한다. year/month는 신규 추가용 기본값일 뿐(읽기 전용은 추가 안 함)이라 오늘로 둔다. */}
+      <RecordDrawer
+        ref={drawerRef}
+        year={new Date().getFullYear()}
+        month={new Date().getMonth() + 1}
+        onNavigate={(tx) =>
+          router.push({
+            pathname: '/[year]/[month]',
+            params: { year: String(tx.year), month: String(tx.month) },
+          })
+        }
+      />
     </Screen>
   );
 }

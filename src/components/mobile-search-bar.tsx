@@ -82,7 +82,7 @@ export function MobileSearchBar({
                   onChangeText={setQuery}
                   onSubmitEditing={submit}
                   returnKeyType="search"
-                  placeholder="메모·거래처 검색"
+                  placeholder="거래처·카테고리·메모 검색"
                   placeholderTextColor={Palette.muted}
                   className="flex-1 py-1 text-base text-ink font-sans"
                 />

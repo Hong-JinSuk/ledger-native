@@ -32,6 +32,12 @@ export interface Transaction extends SyncMeta {
   type: TransactionType | '';
   /** Category name (matches a {@link CategoryItem.name}). */
   category?: string;
+  /**
+   * Optional subcategory (소분류) — one of the chosen category's {@link CategoryItem.subcategories}.
+   * A refinement of {@link category}, picked in the record drawer; absent when the user didn't choose
+   * one. Optional & backward-compatible ⇒ no snapshot migration (like {@link order}/{@link installmentApr}).
+   */
+  subcategory?: string;
   merchant?: string;
   /** Integer amount in KRW (no decimals, no floats — money is never a float). */
   amount: number;

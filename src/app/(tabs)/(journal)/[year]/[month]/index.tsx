@@ -24,6 +24,7 @@ import { Screen } from '@/components/screen';
 import { TransactionRow } from '@/components/transaction-row';
 import { webScrollContent } from '@/constants/layout';
 import { Palette } from '@/constants/palette';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useIsWideScreen } from '@/hooks/use-responsive';
 import {
   currentMonthKey,
@@ -48,6 +49,9 @@ import { useLedgerStore } from '@/store/ledger-store';
 import type { Transaction } from '@/types/ledger';
 
 type ViewMode = 'list' | 'calendar';
+
+/** 리스트 검색 입력 → 목록 필터 반영까지의 지연(ms). 타이핑은 즉시, 필터·리렌더는 멈춘 뒤 한 번만. */
+const SEARCH_DEBOUNCE_MS = 200;
 
 export default function SpreadsheetView() {
   const { year, month } = useLocalSearchParams<{ year: string; month: string }>();
@@ -148,7 +152,9 @@ export default function SpreadsheetView() {
   const remaining = monthRemainingBudget(records[key], settings, y, m);
   const fixedTotal = monthFixedTotal(settings, y, m);
 
-  const filtered = useMemo(() => sortRowsByDayDesc(searchRows(rows, query)), [rows, query]);
+  // 검색은 입력값(query)이 아니라 디바운스된 값으로 필터 — 타이핑 중 매 글자 재계산/목록 리렌더를 막는다.
+  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+  const filtered = useMemo(() => sortRowsByDayDesc(searchRows(rows, debouncedQuery)), [rows, debouncedQuery]);
   const dayGroups = useMemo(() => {
     const groups = groupByDay(filtered);
     return Object.keys(groups)
@@ -282,8 +288,11 @@ export default function SpreadsheetView() {
                 검색 결과가 없어요.
               </Text>
             ) : (
+              // FadeIn key에 검색어를 넣어 결과가 바뀔 때마다 그룹이 remount → 초기 로드처럼 stagger가 다시
+              // 재생된다(검색어가 그대로면 key도 그대로라 기록 추가·수정 땐 재생 안 됨). delay는 상한을 둬
+              // 기록 많은 달도 마지막 그룹이 늘어지지 않게 한다(search.tsx와 동일).
               dayGroups.map(({ day, rows: dayRows }, gi) => (
-                <FadeIn key={day} delay={gi * 40}>
+                <FadeIn key={`${debouncedQuery}-${day}`} delay={Math.min(gi, 8) * 40}>
                   <View className="mb-5">
                     <View className="mb-1 flex-row items-center justify-between">
                       <Text className="text-xs text-muted font-sans-semibold">

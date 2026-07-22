@@ -10,6 +10,7 @@ export const transactionFormSchema = z.object({
   type: transactionTypeSchema,
   amount: z.number().int().min(0),
   category: z.string().optional(),
+  subcategory: z.string().optional(),
   merchant: z.string().optional(),
   day: z.number().int().min(1).max(31).nullable(),
   // optional (not .default) so the schema's input and output types match — keeps the

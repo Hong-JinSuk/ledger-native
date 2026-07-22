@@ -219,6 +219,7 @@ export function searchRows(rows: Transaction[], query: string): Transaction[] {
     (r) =>
       (r.merchant ?? '').toLowerCase().includes(q) ||
       (r.category ?? '').toLowerCase().includes(q) ||
+      (r.subcategory ?? '').toLowerCase().includes(q) ||
       (r.note ?? '').toLowerCase().includes(q),
   );
 }
