@@ -8,7 +8,6 @@ import {
   writeLedgerFile,
 } from '@/lib/sync/drive-api';
 import { loadLedgerOwner, saveLedgerOwner } from '@/lib/storage/ledger-storage';
-import { mergeLedger } from '@/lib/sync/merge';
 import { useAuthStore } from '@/store/auth-store';
 import { useLedgerStore } from '@/store/ledger-store';
 import { useSyncStore } from '@/store/sync-store';
@@ -106,10 +105,11 @@ async function run(): Promise<boolean> {
       const remoteSnap = await readLedgerFile(meta.id);
       if (__DEV__) console.log('[sync] PULL:', remoteSnap ? 'read OK → merging' : 'null/corrupt → skip merge');
       if (remoteSnap) {
-        // applySyncedSnapshot re-merges against the CURRENT store, so edits made during the async
-        // download still win and are never clobbered.
-        const merged = mergeLedger(localSnapshot(), remoteSnap);
-        useLedgerStore.getState().applySyncedSnapshot(merged);
+        // Hand the RAW remote to applySyncedSnapshot: it migrates the (possibly older) snapshot up to the
+        // current version BEFORE merging, then re-merges against the CURRENT store so edits made during the
+        // async download still win. Pre-merging here would stamp version = max(local, remote) = current and
+        // turn that migration into a no-op — old category names would then slip in un-remapped.
+        useLedgerStore.getState().applySyncedSnapshot(remoteSnap);
       }
       lastRemoteModifiedTime = meta.modifiedTime;
     } else if (__DEV__) {
