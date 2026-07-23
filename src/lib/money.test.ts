@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatAmount, formatCurrency, formatSignedCurrency, parseAmount } from '@/lib/money';
+import {
+  formatAmount,
+  formatCompactAmount,
+  formatCurrency,
+  formatSignedCurrency,
+  parseAmount,
+} from '@/lib/money';
 
 describe('money', () => {
   it('groups thousands', () => {
@@ -27,6 +33,18 @@ describe('money', () => {
     expect(formatSignedCurrency(5000, '수입')).toBe('5,000원');
     expect(formatSignedCurrency(5000, '이체')).toBe('5,000원');
     expect(formatSignedCurrency(0, '')).toBe('0원');
+  });
+
+  it('formatCompactAmount collapses to 만/억 units for tight spaces', () => {
+    expect(formatCompactAmount(0)).toBe('0');
+    expect(formatCompactAmount(8500)).toBe('8,500'); // under 1만 → plain grouping
+    expect(formatCompactAmount(9999)).toBe('9,999');
+    expect(formatCompactAmount(10000)).toBe('1만');
+    expect(formatCompactAmount(15000)).toBe('1.5만');
+    expect(formatCompactAmount(1234567)).toBe('123만'); // rounds; full precision stays elsewhere
+    expect(formatCompactAmount(100000000)).toBe('1억');
+    expect(formatCompactAmount(234567890)).toBe('2.3억');
+    expect(formatCompactAmount(-12345)).toBe('-1.2만'); // sign preserved
   });
 
   it('parseAmount strips commas, currency and other non-digits', () => {

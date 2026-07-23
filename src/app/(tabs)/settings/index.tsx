@@ -1,18 +1,38 @@
 import { useRouter } from 'expo-router';
-import { ChevronRight, Layers, LogOut, Plus, RefreshCw, User } from 'lucide-react-native';
+import {
+  ChevronRight,
+  Layers,
+  LogOut,
+  Plus,
+  RefreshCw,
+  User,
+} from 'lucide-react-native';
 import { useMemo, useRef } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 
 import { AppHeader } from '@/components/app-header';
 import { useConfirm } from '@/components/confirm-dialog';
-import { DefaultBudgetDrawer, type DefaultBudgetDrawerRef } from '@/components/default-budget-drawer';
+import {
+  DefaultBudgetDrawer,
+  type DefaultBudgetDrawerRef,
+} from '@/components/default-budget-drawer';
 import { EmptyState } from '@/components/empty-state';
 import { FadeIn } from '@/components/fade-in';
 import { FixedExpenseCard } from '@/components/fixed-expense-card';
-import { FixedExpenseDrawer, type FixedExpenseDrawerRef } from '@/components/fixed-expense-drawer';
+import {
+  FixedExpenseDrawer,
+  type FixedExpenseDrawerRef,
+} from '@/components/fixed-expense-drawer';
 import { Screen } from '@/components/screen';
 import { webScrollContent } from '@/constants/layout';
 import { Palette } from '@/constants/palette';
+import { useIsWideScreen } from '@/hooks/use-responsive';
 import { signOut } from '@/lib/auth/auth';
 import { formatAmount } from '@/lib/money';
 import { syncNow } from '@/lib/sync/sync-service';
@@ -23,12 +43,16 @@ import type { FixedExpense } from '@/types/ledger';
 
 export default function SettingsView() {
   const router = useRouter();
+  const isWide = useIsWideScreen();
 
   const settingsBudget = useLedgerStore((s) => s.settings.budget);
   const currency = useLedgerStore((s) => s.settings.currency);
   const fixedExpenses = useLedgerStore((s) => s.settings.fixedExpenses);
   // Hide tombstoned (soft-deleted) expenses — they linger in the array so the deletion can sync.
-  const visibleFixedExpenses = useMemo(() => fixedExpenses.filter((e) => !e.deleted), [fixedExpenses]);
+  const visibleFixedExpenses = useMemo(
+    () => fixedExpenses.filter((e) => !e.deleted),
+    [fixedExpenses],
+  );
   // Default budget with fixed expenses taken out — the "actually spendable" amount each month.
   const fixedTotal = useMemo(
     () => visibleFixedExpenses.reduce((sum, e) => sum + (e.amount || 0), 0),
@@ -47,7 +71,8 @@ export default function SettingsView() {
 
   const drawerRef = useRef<FixedExpenseDrawerRef>(null);
   const openAdd = () => drawerRef.current?.present();
-  const openEdit = (expense: FixedExpense) => drawerRef.current?.present(expense);
+  const openEdit = (expense: FixedExpense) =>
+    drawerRef.current?.present(expense);
 
   const budgetDrawerRef = useRef<DefaultBudgetDrawerRef>(null);
 
@@ -80,7 +105,9 @@ export default function SettingsView() {
     <Screen webFull>
       {/* Fixed header — stays put like a page header; only the content below scrolls. */}
       <View style={{ backgroundColor: Palette.paper }}>
-        <View style={[{ paddingHorizontal: 20, paddingTop: 16 }, webScrollContent]}>
+        <View
+          style={[{ paddingHorizontal: 20, paddingTop: 16 }, webScrollContent]}
+        >
           <AppHeader title="Settings" subtitle="예산 · 카테고리 · 고정 지출" />
         </View>
       </View>
@@ -88,17 +115,21 @@ export default function SettingsView() {
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[
-          { paddingHorizontal: 20, paddingBottom: 64 },
+          { paddingHorizontal: 20, paddingBottom: isWide ? 64 : 24 },
           webScrollContent,
         ]}
-        keyboardShouldPersistTaps="handled">
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Default budget — tap to edit in a sheet (matches every other edit in the app) */}
         <FadeIn>
           <SectionHeader title="기본 예산" />
           <Pressable
             onPress={() => budgetDrawerRef.current?.present()}
-            className="rounded-2xl border border-line bg-white/60 px-5 py-4 active:opacity-70">
-            <Text className="text-sm text-muted font-sans">매달 기본으로 적용될 예산</Text>
+            className="rounded-2xl border border-line bg-white/60 px-5 py-4 active:opacity-70"
+          >
+            <Text className="text-sm text-muted font-sans">
+              매달 기본으로 적용될 예산
+            </Text>
             <View className="mt-2 flex-row items-end justify-end gap-1">
               <Text className="text-3xl text-ink font-mono-semibold">
                 {formatAmount(settingsBudget)}
@@ -107,7 +138,9 @@ export default function SettingsView() {
             </View>
             {settingsBudget > 0 && fixedTotal > 0 && (
               <View className="mt-1.5 flex-row items-baseline justify-end gap-1.5">
-                <Text className="text-[11px] text-muted font-sans">고정 지출 빼면</Text>
+                <Text className="text-[11px] text-muted font-sans">
+                  고정 지출 빼면
+                </Text>
                 <Text className="text-base text-muted font-mono-medium">
                   {formatAmount(budgetAfterFixed)}
                 </Text>
@@ -122,13 +155,18 @@ export default function SettingsView() {
           <SectionHeader title="카테고리" />
           <Pressable
             onPress={() => router.push('/settings/categories')}
-            className="flex-row items-center rounded-2xl border border-line bg-white/60 px-5 py-4 active:opacity-70">
+            className="flex-row items-center rounded-2xl border border-line bg-white/60 px-5 py-4 active:opacity-70"
+          >
             <View className="h-10 w-10 items-center justify-center rounded-full bg-fill">
               <Layers size={18} color={Palette.ink} />
             </View>
             <View className="ml-3 flex-1">
-              <Text className="text-[15px] text-ink font-sans-medium">카테고리 관리</Text>
-              <Text className="mt-0.5 text-xs text-muted font-sans">{categoryCount}개 분류</Text>
+              <Text className="text-[15px] text-ink font-sans-medium">
+                카테고리 관리
+              </Text>
+              <Text className="mt-0.5 text-xs text-muted font-sans">
+                {categoryCount}개 분류
+              </Text>
             </View>
             <ChevronRight size={20} color={Palette.muted} />
           </Pressable>
@@ -142,7 +180,8 @@ export default function SettingsView() {
               <Pressable
                 onPress={openAdd}
                 hitSlop={8}
-                className="flex-row items-center gap-1 rounded-full bg-fill px-3 py-1.5 active:opacity-70">
+                className="flex-row items-center gap-1 rounded-full bg-fill px-3 py-1.5 active:opacity-70"
+              >
                 <Plus size={14} color={Palette.ink} />
                 <Text className="text-[11px] uppercase tracking-wider text-ink font-sans-bold">
                   추가
@@ -151,7 +190,11 @@ export default function SettingsView() {
             }
           />
           {visibleFixedExpenses.length === 0 ? (
-            <EmptyState message={'아직 등록된 고정 지출이 없어요.\n매달 나가는 지출을 더해보세요.'} />
+            <EmptyState
+              message={
+                '아직 등록된 고정 지출이 없어요.\n매달 나가는 지출을 더해보세요.'
+              }
+            />
           ) : (
             <View className="gap-2.5">
               {visibleFixedExpenses.map((expense) => (
@@ -167,7 +210,7 @@ export default function SettingsView() {
         </FadeIn>
 
         {/* Account */}
-        <FadeIn delay={180} style={{ marginTop: 28 }}>
+        <FadeIn delay={180} style={{ marginTop: 10 }}>
           <SectionHeader title="계정" />
           <View className="rounded-2xl border border-line bg-white/60 px-5 py-4">
             <View className="flex-row items-center">
@@ -175,20 +218,28 @@ export default function SettingsView() {
                 <User size={18} color={Palette.ink} />
               </View>
               <View className="ml-3 flex-1">
-                <Text className="text-[15px] text-ink font-sans-medium" numberOfLines={1}>
+                <Text
+                  className="text-[15px] text-ink font-sans-medium"
+                  numberOfLines={1}
+                >
                   {session?.user.email ?? '로그인됨'}
                 </Text>
-                <Text className="mt-0.5 text-xs text-muted font-sans">Google 계정으로 로그인</Text>
+                <Text className="mt-0.5 text-xs text-muted font-sans">
+                  Google 계정으로 로그인
+                </Text>
               </View>
             </View>
 
             {/* Google Drive sync status + manual trigger (the ledger data lives in the user's Drive). */}
             <View className="mt-4 flex-row items-center justify-between border-t border-line pt-4">
               <View className="flex-1 pr-3">
-                <Text className="text-[13px] text-ink font-sans-medium">Google Drive 동기화</Text>
+                <Text className="text-[13px] text-ink font-sans-medium">
+                  Google Drive 동기화
+                </Text>
                 <Text
                   numberOfLines={2}
-                  className={`mt-0.5 text-xs font-sans ${syncStatus === 'error' ? 'text-expense' : 'text-muted'}`}>
+                  className={`mt-0.5 text-xs font-sans ${syncStatus === 'error' ? 'text-expense' : 'text-muted'}`}
+                >
                   {syncSubtitle}
                 </Text>
               </View>
@@ -197,7 +248,8 @@ export default function SettingsView() {
                 disabled={syncing}
                 hitSlop={8}
                 style={{ opacity: syncing ? 0.6 : 1 }}
-                className="flex-row items-center gap-1.5 rounded-full bg-fill px-3.5 py-2 active:opacity-70">
+                className="flex-row items-center gap-1.5 rounded-full bg-fill px-3.5 py-2 active:opacity-70"
+              >
                 {syncing ? (
                   <ActivityIndicator size="small" color={Palette.ink} />
                 ) : (
@@ -211,9 +263,12 @@ export default function SettingsView() {
 
             <Pressable
               onPress={handleSignOut}
-              className="mt-4 flex-row items-center justify-center gap-2 rounded-full bg-fill py-3 active:opacity-70">
+              className="mt-4 flex-row items-center justify-center gap-2 rounded-full bg-fill py-3 active:opacity-70"
+            >
               <LogOut size={15} color={Palette.expense} />
-              <Text className="text-sm text-expense font-sans-bold">로그아웃</Text>
+              <Text className="text-sm text-expense font-sans-bold">
+                로그아웃
+              </Text>
             </Pressable>
           </View>
         </FadeIn>
@@ -225,12 +280,19 @@ export default function SettingsView() {
   );
 }
 
-function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
+function SectionHeader({
+  title,
+  action,
+}: {
+  title: string;
+  action?: React.ReactNode;
+}) {
   return (
     <View className="mb-3 flex-row items-center justify-between">
-      <Text className="text-[11px] uppercase tracking-[2px] text-ink font-sans-bold">{title}</Text>
+      <Text className="text-[11px] uppercase tracking-[2px] text-ink font-sans-bold">
+        {title}
+      </Text>
       {action}
     </View>
   );
 }
-

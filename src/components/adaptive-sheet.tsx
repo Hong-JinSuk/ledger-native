@@ -37,6 +37,13 @@ type Props = {
   contentContainerStyle?: ViewStyle;
   /** Runs after the sheet/panel finishes closing (e.g. the write-end Drive sync hook). */
   onDismiss?: () => void;
+  /**
+   * @gorhom stack behavior when this sheet is presented OVER another (mobile only). The default
+   * 'switch' MINIMIZES the sheet underneath and restores it on close — which races/fails for a picker
+   * stacked on a form (the form can stay closed). Pass 'push' to keep the underlying sheet in place.
+   * Ignored on web, where the two RN Modals already stack independently.
+   */
+  stackBehavior?: 'push' | 'switch' | 'replace';
   children: ReactNode;
 };
 
@@ -52,7 +59,7 @@ type Props = {
  */
 export const AdaptiveSheet = forwardRef<AdaptiveSheetRef, Props>(
   function AdaptiveSheet(
-    { snapPoints, scroll = true, contentContainerStyle, onDismiss, children },
+    { snapPoints, scroll = true, contentContainerStyle, onDismiss, stackBehavior, children },
     ref,
   ) {
     const isWide = useIsWideViewport();
@@ -173,6 +180,7 @@ export const AdaptiveSheet = forwardRef<AdaptiveSheetRef, Props>(
       <BottomSheetModal
         ref={bottomRef}
         snapPoints={snapPoints}
+        stackBehavior={stackBehavior}
         enableDynamicSizing={false}
         enablePanDownToClose
         keyboardBehavior="interactive"

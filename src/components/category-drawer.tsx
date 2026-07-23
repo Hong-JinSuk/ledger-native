@@ -54,7 +54,8 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
   const toast = useToast();
 
   const isEdit = category != null;
-  const [subInput, setSubInput] = useState('');
+  // Bumped on every open → remounts SubcategoryAdder so its input clears (it owns its own text now).
+  const [openNonce, setOpenNonce] = useState(0);
   const { control, handleSubmit, reset } = useForm<CategoryFormValues>({
     resolver: zodResolver(categoryFormSchema),
     defaultValues: toDefaults(null, '지출'),
@@ -65,7 +66,7 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
       setCategory(cat);
       // Reset on every open (form + subcategory input) so a fresh add never carries over prior data.
       reset(toDefaults(cat, defaultType));
-      setSubInput('');
+      setOpenNonce((n) => n + 1); // remount the add-row → its input clears
       sheetRef.current?.present();
     },
     dismiss: () => sheetRef.current?.dismiss(),
@@ -189,50 +190,30 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
           <Controller
             control={control}
             name="subcategories"
-            render={({ field }) => {
-              const addSub = () => {
-                const value = subInput.trim();
-                if (!value || field.value.includes(value)) {
-                  setSubInput('');
-                  return;
-                }
-                field.onChange([...field.value, value]);
-                setSubInput('');
-              };
-              return (
-                <>
-                  {field.value.length > 0 && (
-                    <View className="mb-2 flex-row flex-wrap gap-2">
-                      {field.value.map((sub, i) => (
-                        <Pressable
-                          key={`${sub}-${i}`}
-                          onPress={() => field.onChange(field.value.filter((_, j) => j !== i))}
-                          className="flex-row items-center gap-1 rounded-full bg-fill px-3 py-1.5 active:opacity-60">
-                          <Text className="text-sm text-ink font-sans-medium">{sub}</Text>
-                          <X size={13} color={Palette.muted} strokeWidth={2.5} />
-                        </Pressable>
-                      ))}
-                    </View>
-                  )}
-                  <View className="flex-row items-center gap-2">
-                    <SheetTextInput
-                      value={subInput}
-                      onChangeText={setSubInput}
-                      onSubmitEditing={addSub}
-                      placeholder="소분류 추가"
-                      placeholderTextColor={Palette.muted}
-                      returnKeyType="done"
-                      className="flex-1 rounded-2xl bg-fill px-4 py-3 text-base text-ink font-sans"
-                    />
-                    <Pressable
-                      onPress={addSub}
-                      className="h-11 w-11 items-center justify-center rounded-2xl bg-ink active:opacity-80">
-                      <Plus size={18} color={Palette.paper} />
-                    </Pressable>
+            render={({ field }) => (
+              <>
+                {field.value.length > 0 && (
+                  <View className="mb-2 flex-row flex-wrap gap-2">
+                    {field.value.map((sub, i) => (
+                      <Pressable
+                        key={`${sub}-${i}`}
+                        onPress={() => field.onChange(field.value.filter((_, j) => j !== i))}
+                        className="flex-row items-center gap-1 rounded-full bg-fill px-3 py-1.5 active:opacity-60">
+                        <Text className="text-sm text-ink font-sans-medium">{sub}</Text>
+                        <X size={13} color={Palette.muted} strokeWidth={2.5} />
+                      </Pressable>
+                    ))}
                   </View>
-                </>
-              );
-            }}
+                )}
+                {/* The input owns its own text (SubcategoryAdder) so typing re-renders only that row,
+                    not the whole drawer + icon grid — which was breaking Hangul composition. */}
+                <SubcategoryAdder
+                  key={openNonce}
+                  existing={field.value}
+                  onAdd={(value) => field.onChange([...field.value, value])}
+                />
+              </>
+            )}
           />
         </Field>
 
@@ -256,6 +237,49 @@ export const CategoryDrawer = forwardRef<CategoryDrawerRef, Props>(function Cate
     </AdaptiveSheet>
   );
 });
+
+/**
+ * The 소분류 add-row, isolated so it owns its OWN input text. Typing then re-renders only this tiny
+ * component — NOT the whole CategoryDrawer (name/type/icon fields + the ~80-icon grid). That broad
+ * per-keystroke re-render was reasserting the controlled BottomSheetTextInput's `value` mid-composition
+ * and resetting Android's Hangul IME, decomposing the syllable being typed (개인 → 개이ㄴ). The name
+ * field never hit this because RHF's Controller already isolates its re-render; this mirrors that.
+ *
+ * Remounted (via a `key` bumped on each open) so its text clears when the drawer reopens.
+ */
+function SubcategoryAdder({
+  existing,
+  onAdd,
+}: {
+  existing: string[];
+  onAdd: (value: string) => void;
+}) {
+  const [value, setValue] = useState('');
+  const add = () => {
+    const trimmed = value.trim();
+    setValue('');
+    if (!trimmed || existing.includes(trimmed)) return; // ignore blank / duplicate
+    onAdd(trimmed);
+  };
+  return (
+    <View className="flex-row items-center gap-2">
+      <SheetTextInput
+        value={value}
+        onChangeText={setValue}
+        onSubmitEditing={add}
+        placeholder="소분류 추가"
+        placeholderTextColor={Palette.muted}
+        returnKeyType="done"
+        className="flex-1 rounded-2xl bg-fill px-4 py-3 text-base text-ink font-sans"
+      />
+      <Pressable
+        onPress={add}
+        className="h-11 w-11 items-center justify-center rounded-2xl bg-ink active:opacity-80">
+        <Plus size={18} color={Palette.paper} />
+      </Pressable>
+    </View>
+  );
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

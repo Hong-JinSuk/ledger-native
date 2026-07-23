@@ -34,6 +34,26 @@ export function formatSignedCurrency(
   return `${sign}${formatCurrency(magnitude, currency)}`;
 }
 
+/**
+ * Compact amount in Korean 만/억 units for tight spaces (chart centres, bar captions) where the full
+ * grouped figure won't fit. Full precision stays in {@link formatAmount}/{@link formatCurrency} — this
+ * is a glanceable summary, so it rounds:
+ *   `8,500 → '8,500'` · `15,000 → '1.5만'` · `1,234,567 → '123만'` · `234,567,890 → '2.3억'`
+ * Under 1만 it falls through to plain grouping (no unit). Sign is preserved.
+ */
+export function formatCompactAmount(amount: number): string {
+  const n = Math.trunc(Math.abs(amount || 0));
+  const sign = amount < 0 ? '-' : '';
+  if (n < 10_000) return sign + formatAmount(n);
+  if (n < 100_000_000) return `${sign}${compactUnit(n / 10_000)}만`;
+  return `${sign}${compactUnit(n / 100_000_000)}억`;
+}
+
+/** One significant decimal below 100, whole numbers at/above it — keeps a unit figure ~2–4 chars. */
+function compactUnit(value: number): string {
+  return value >= 100 ? String(Math.round(value)) : String(Math.round(value * 10) / 10);
+}
+
 /** Parse user input (may contain commas / currency / other non-digits) into an integer amount. */
 export function parseAmount(input: string): number {
   const digits = input.replace(/[^0-9]/g, '');

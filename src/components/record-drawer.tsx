@@ -9,12 +9,13 @@ import {
 } from 'lucide-react-native';
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { CategoryIcon } from '@/components/category-icon';
 import { AdaptiveSheet, type AdaptiveSheetRef } from '@/components/adaptive-sheet';
 import { AmountInput } from '@/components/amount-input';
 import { useConfirm } from '@/components/confirm-dialog';
+import { FadeIn } from '@/components/fade-in';
 import { SheetTextInput } from '@/components/sheet-text-input';
 import { useToast } from '@/components/toast';
 import { Palette } from '@/constants/palette';
@@ -31,7 +32,7 @@ import { formatAmount } from '@/lib/money';
 import { syncOnEditEnd } from '@/lib/sync/sync-service';
 import { transactionFormSchema, type TransactionFormValues } from '@/schemas/transaction';
 import { useLedgerStore } from '@/store/ledger-store';
-import type { Transaction, TransactionType } from '@/types/ledger';
+import type { CategoryItem, Transaction, TransactionType } from '@/types/ledger';
 
 const TYPES: TransactionType[] = ['지출', '수입', '이체'];
 
@@ -81,6 +82,8 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   ref,
 ) {
   const sheetRef = useRef<AdaptiveSheetRef>(null);
+  // Second sheet, stacked over this one, for picking a category (see CategoryPickerSheet below).
+  const categoryPickerRef = useRef<CategoryPickerRef>(null);
   // The drawer owns "which row" (set at present time), so a fresh add always opens blank instead of
   // reusing the previous entry — decoupled from the parent's async state.
   const [transaction, setTransaction] = useState<Transaction | null>(null);
@@ -163,6 +166,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   const selectedType = watch('type');
   const amountValue = watch('amount');
   const selectedCategoryName = watch('category');
+  const selectedSubcategoryName = watch('subcategory');
   // 할부 control shows for a new expense OR when editing an existing installment (edit the whole unit).
   // Per-month = floor(total / months); the leftover rides the first month (mirrors the store's split) so
   // the preview matches what actually gets recorded.
@@ -231,13 +235,15 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
     [categories, selectedType, usageCounts],
   );
 
-  // Subcategories (소분류) of the chosen category — the optional refinement picker below the category
-  // row. Looked up across ALL live categories (not just the type-filtered visible set) so it still
-  // resolves when editing a record whose category is filtered out of the current type.
-  const subcategoryOptions = useMemo(() => {
-    const cat = categories.find((c) => !c.deleted && c.name === selectedCategoryName);
-    return cat?.subcategories ?? [];
-  }, [categories, selectedCategoryName]);
+  // The chosen category object — for the field row's icon + the subcategory options. Looked up across
+  // ALL live categories (not just the type-filtered visible set) so it still resolves when editing a
+  // record whose category is filtered out of the current type.
+  const selectedCategory = useMemo(
+    () => categories.find((c) => !c.deleted && c.name === selectedCategoryName),
+    [categories, selectedCategoryName],
+  );
+  // Subcategories (소분류) of the chosen category — the optional refinement picker below the category row.
+  const subcategoryOptions = selectedCategory?.subcategories ?? [];
 
   const onSubmit = useCallback(
     (values: TransactionFormValues) => {
@@ -398,6 +404,7 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
   };
 
   return (
+    <>
     <AdaptiveSheet
       ref={sheetRef}
       snapPoints={['88%']}
@@ -551,73 +558,27 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
           </Field>
         )}
 
-        {/* Category */}
+        {/* Category — a single row showing the chosen category (icon + name); tapping opens the
+            CategoryPickerSheet stacked over this drawer to change it (keeps the form short). */}
         <Field label="카테고리">
-          <Controller
-            control={control}
-            name="category"
-            render={({ field }) => (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View className="flex-row gap-2">
-                  {visibleCategories.map((c) => {
-                    const active = field.value === c.name;
-                    return (
-                      <Pressable
-                        key={c.id}
-                        onPress={() => {
-                          animateNextLayout(); // settle the subcategory row that appears/changes below
-                          field.onChange(active ? undefined : c.name);
-                          setValue('subcategory', undefined); // reset — subcategories are category-specific
-                        }}
-                        className={`items-center rounded-2xl border px-3 py-2 ${active ? 'border-ink bg-ink' : 'border-line bg-white/60'}`}>
-                        <CategoryIcon
-                          name={c.icon}
-                          size={18}
-                          color={active ? Palette.paper : Palette.ink}
-                        />
-                        <Text
-                          className={`mt-1 text-[11px] font-sans-medium ${active ? 'text-paper' : 'text-muted'}`}>
-                          {c.name}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </ScrollView>
+          <Pressable
+            onPress={() => categoryPickerRef.current?.present()}
+            className="flex-row items-center justify-between rounded-2xl bg-fill px-4 py-3.5 active:opacity-80">
+            {selectedCategoryName ? (
+              <View className="flex-row items-center gap-2.5">
+                <CategoryIcon name={selectedCategory?.icon} size={18} color={Palette.ink} />
+                <Text className="text-base text-ink font-sans-medium">
+                  {selectedCategoryName}
+                  {selectedSubcategoryName ? (
+                    <Text className="text-muted font-sans"> · {selectedSubcategoryName}</Text>
+                  ) : null}
+                </Text>
+              </View>
+            ) : (
+              <Text className="text-base text-muted font-sans">카테고리를 선택하세요</Text>
             )}
-          />
-
-          {/* 소분류 (subcategory) — optional refinement. Shown only when the category has a real option
-              beyond the default '기타' (most seeded categories carry only '기타', which is no real choice). */}
-          {subcategoryOptions.some((s) => s !== '기타') && (
-            <View className="mt-3">
-              <Text className="mb-2 text-[10px] uppercase tracking-wider text-muted font-sans-medium">
-                소분류 · 선택
-              </Text>
-              <Controller
-                control={control}
-                name="subcategory"
-                render={({ field }) => (
-                  <View className="flex-row flex-wrap gap-2">
-                    {subcategoryOptions.map((sub) => {
-                      const active = field.value === sub;
-                      return (
-                        <Pressable
-                          key={sub}
-                          onPress={() => field.onChange(active ? undefined : sub)}
-                          className={`rounded-full px-3 py-1.5 ${active ? 'bg-ink' : 'bg-fill'}`}>
-                          <Text
-                            className={`text-[13px] font-sans-medium ${active ? 'text-paper' : 'text-muted'}`}>
-                            {sub}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                )}
-              />
-            </View>
-          )}
+            <ChevronRight size={18} color={Palette.muted} />
+          </Pressable>
         </Field>
 
         {/* Merchant */}
@@ -788,6 +749,21 @@ export const RecordDrawer = forwardRef<RecordDrawerRef, Props>(function RecordDr
           </>
         )}
     </AdaptiveSheet>
+
+    {/* Stacked over the drawer: the category picker. Selecting sets the form value and dismisses back. */}
+    <CategoryPickerSheet
+      ref={categoryPickerRef}
+      categories={visibleCategories}
+      selectedName={selectedCategoryName}
+      subcategoryOptions={subcategoryOptions}
+      selectedSub={selectedSubcategoryName}
+      onCategory={(name) => {
+        setValue('category', name);
+        setValue('subcategory', undefined); // reset — subcategories are category-specific
+      }}
+      onSubcategory={(sub) => setValue('subcategory', sub)}
+    />
+    </>
   );
 });
 
@@ -931,3 +907,113 @@ function InstallmentChip({
     </Pressable>
   );
 }
+
+type CategoryPickerRef = { present: () => void; dismiss: () => void };
+
+/**
+ * The category (+ 소분류) picker — a second sheet stacked over the record drawer (modal-over-modal). The
+ * drawer's category field shows only the chosen "카테고리 · 소분류"; tapping it opens this. Tapping a
+ * category selects it and reveals its 소분류 below (optional) — pick one to finish, or 완료 to keep just
+ * the category. Re-tapping the active category/소분류 clears it (both are optional). Live: every tap
+ * writes straight to the form (like the old inline strip), so a backdrop dismiss keeps it.
+ */
+const CategoryPickerSheet = forwardRef<
+  CategoryPickerRef,
+  {
+    categories: CategoryItem[];
+    selectedName?: string;
+    subcategoryOptions: string[];
+    selectedSub?: string;
+    onCategory: (name: string | undefined) => void;
+    onSubcategory: (sub: string | undefined) => void;
+  }
+>(function CategoryPickerSheet(
+  { categories, selectedName, subcategoryOptions, selectedSub, onCategory, onSubcategory },
+  ref,
+) {
+  const sheetRef = useRef<AdaptiveSheetRef>(null);
+  useImperativeHandle(ref, () => ({
+    present: () => sheetRef.current?.present(),
+    dismiss: () => sheetRef.current?.dismiss(),
+  }));
+
+  // Show the 소분류 step for any chosen category with options (every category has at least '기타'). It's
+  // optional — the user can pick one (incl. '기타') or tap 완료 to keep just the category.
+  const showSubs = !!selectedName && subcategoryOptions.length > 0;
+
+  return (
+    <AdaptiveSheet
+      ref={sheetRef}
+      snapPoints={['80%']}
+      stackBehavior="push"
+      contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+      <Text className="mb-5 text-2xl text-ink font-serif">카테고리 선택</Text>
+      {categories.length === 0 ? (
+        <Text className="text-sm text-muted font-sans">고를 카테고리가 없어요.</Text>
+      ) : (
+        <View className="flex-row flex-wrap gap-2">
+          {categories.map((c) => {
+            const active = c.name === selectedName;
+            return (
+              <Pressable
+                key={c.id}
+                onPress={() => {
+                  if (active) {
+                    onCategory(undefined); // re-tap clears (category is optional)
+                    sheetRef.current?.dismiss();
+                    return;
+                  }
+                  // Select and stay open so the 소분류 step shows below (optional — 완료 keeps just the category).
+                  onCategory(c.name);
+                }}
+                style={{ width: '30%' }}
+                className={`items-center rounded-2xl border px-2 py-3.5 ${active ? 'border-ink bg-ink' : 'border-line bg-white/60'} active:opacity-80`}>
+                <CategoryIcon name={c.icon} size={22} color={active ? Palette.paper : Palette.ink} />
+                <Text
+                  numberOfLines={1}
+                  className={`mt-1.5 text-xs font-sans-medium ${active ? 'text-paper' : 'text-muted'}`}>
+                  {c.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
+      {/* 소분류 — revealed once a category is chosen. Optional; pick one (incl. '기타') or 완료 to skip. */}
+      {showSubs && (
+        <FadeIn key={selectedName}>
+          <View className="mt-6">
+            <Text className="mb-2.5 text-[10px] uppercase tracking-wider text-muted font-sans-semibold">
+              소분류 · 선택
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              {subcategoryOptions.map((sub) => {
+                const active = sub === selectedSub;
+                return (
+                  <Pressable
+                    key={sub}
+                    onPress={() => {
+                      onSubcategory(active ? undefined : sub);
+                      sheetRef.current?.dismiss(); // picking a 소분류 completes the choice
+                    }}
+                    className={`rounded-full px-3.5 py-2 ${active ? 'bg-ink' : 'bg-fill'} active:opacity-80`}>
+                    <Text
+                      className={`text-[13px] font-sans-medium ${active ? 'text-paper' : 'text-muted'}`}>
+                      {sub}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Pressable
+              onPress={() => sheetRef.current?.dismiss()}
+              className="mt-6 items-center rounded-full bg-ink py-4 active:opacity-80">
+              <Text className="text-base text-paper font-sans-bold">완료</Text>
+            </Pressable>
+          </View>
+        </FadeIn>
+      )}
+    </AdaptiveSheet>
+  );
+});
